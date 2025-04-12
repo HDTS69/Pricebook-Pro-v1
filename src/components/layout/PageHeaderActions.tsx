@@ -1,7 +1,9 @@
 import React from 'react';
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ui/Button";
 import { QuoteActionToolbar } from '@/components/pricebook/QuoteActionToolbar'; 
-import { PanelRightClose, PanelRightOpen } from 'lucide-react';
+import { PanelRightClose, PanelRightOpen, History } from 'lucide-react';
+import { ThemeToggle } from '@/components/ui/ThemeToggle';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/Tooltip';
 
 interface PageHeaderActionsProps {
   isSidebarVisible: boolean;
@@ -11,6 +13,9 @@ interface PageHeaderActionsProps {
   canUndo: boolean;
   canRedo: boolean;
   isProcessingAction?: boolean;
+  lastActionDescription?: string;
+  showHistoryPanel?: boolean;
+  onToggleHistoryPanel?: () => void;
 }
 
 export function PageHeaderActions({
@@ -21,6 +26,9 @@ export function PageHeaderActions({
   canUndo,
   canRedo,
   isProcessingAction = false,
+  lastActionDescription = '',
+  showHistoryPanel = false,
+  onToggleHistoryPanel,
 }: PageHeaderActionsProps): React.ReactElement {
   return (
     <div className="fixed top-4 right-4 z-[60] flex items-center space-x-1">
@@ -32,8 +40,33 @@ export function PageHeaderActions({
             canUndo={canUndo}
             canRedo={canRedo}
             isProcessingAction={isProcessingAction}
+            lastActionDescription={lastActionDescription}
         />
       )}
+      
+      {/* History Button */}
+      {onToggleHistoryPanel && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onToggleHistoryPanel}
+              className={`h-8 w-8 ${showHistoryPanel ? 'bg-accent' : ''}`}
+              aria-label="Toggle History Panel"
+              title="Action History"
+            >
+              <History className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            <p>Action History</p>
+          </TooltipContent>
+        </Tooltip>
+      )}
+      
+      {/* Theme Toggle */}
+      <ThemeToggle />
       
       {/* Always render the toggle button */}
       <Button 

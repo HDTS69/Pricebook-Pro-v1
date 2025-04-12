@@ -1,8 +1,15 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/Card';
+import { 
+  Button, 
+} from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { 
+  Plus, 
+  Pencil, 
+} from 'lucide-react';
 import { Service } from '@/lib/services';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Button } from "@/components/ui/button";
+import { Tier } from '@/types/quote';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,15 +18,15 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { Search, Clock, Package, PlusCircle, Layers, Pencil, Plus } from 'lucide-react';
-import { Tier } from '@/types/quote';
+import { Search, Clock, Package, Layers } from 'lucide-react';
 import { 
   Tooltip, 
   TooltipContent, 
   TooltipProvider, 
   TooltipTrigger 
 } from '@/components/ui/Tooltip';
-import { Badge } from "@/components/ui/Badge";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -28,8 +35,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/Dialog";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 
 interface EditServiceDialogProps {
   isOpen: boolean;
@@ -360,8 +365,8 @@ export function CategoryView({
                           <DropdownMenuCheckboxItem
                             key={tier.id}
                             checked={checkedTiers[service.id]?.[tier.id] || false}
-                            onCheckedChange={(checked) => handleTierCheckChange(service.id, tier.id, !!checked)}
-                            onSelect={(e) => e.preventDefault()}
+                            onCheckedChange={(checked: boolean) => handleTierCheckChange(service.id, tier.id, !!checked)}
+                            onSelect={(e: Event) => e.preventDefault()}
                           >
                             {tier.name}
                           </DropdownMenuCheckboxItem>

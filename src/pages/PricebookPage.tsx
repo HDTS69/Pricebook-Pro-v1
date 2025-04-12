@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
 import {
   Star,
   Wrench,
@@ -12,8 +11,6 @@ import {
   Wind,
   Flame,
   Home,
-  ChevronLeft,
-  ChevronRight,
   Menu,
   Search,
   ClipboardPlus,
@@ -25,8 +22,7 @@ import { CategoryView } from '@/components/pricebook/CategoryView';
 import { DashboardMenu } from '@/components/layout/DashboardMenu';
 import { services, Service } from '@/lib/services';
 import { arrayMove } from '@dnd-kit/sortable';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
-import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/Select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/Tooltip';
@@ -39,6 +35,10 @@ import { CurrentQuoteSidebar } from '@/components/pricebook/CurrentQuoteSidebar'
 import { PageHeaderActions } from '@/components/layout/PageHeaderActions';
 import { Quote, Customer, Tier, QuoteTask, Addon } from '@/types/quote';
 import { v4 as uuidv4 } from 'uuid';
+import { ActionHistoryProvider, AppHistoryState } from '@/contexts/ActionHistoryContext'; // Removed useActionHistory
+import { useUndoService } from '@/hooks/useUndoService';
+import { ActionHistoryPanel } from '@/components/pricebook/ActionHistoryPanel';
+import { useUndoRedoShortcuts } from '@/hooks/useKeyboardShortcuts';
 
 // --- Define Default Tier Constant ---
 const DEFAULT_TIER: Tier = {
@@ -780,7 +780,7 @@ function recalculateQuoteTotalForSelectedTier(quote: Quote): number {
 
 export function PricebookPage() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, _setSidebarOpen] = useState(true); // Marked setter as unused
   const [mainMenuOpen, setMainMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isHovering, setIsHovering] = useState(false);
@@ -802,17 +802,41 @@ export function PricebookPage() {
   const [currentQuoteId, setCurrentQuoteId] = useState<string | null>(null);
   const [availableTiers, setAvailableTiers] = useState<Tier[]>(mockAvailableTiers);
   const [activeBaseQuoteNumber, setActiveBaseQuoteNumber] = useState<string | null>(null);
-  const [canUndo, setCanUndo] = useState<boolean>(false);
-  const [canRedo, setCanRedo] = useState<boolean>(false);
-  const [isProcessingAction, setIsProcessingAction] = useState<boolean>(false);
   const [isCustomTaskDialogOpen, setIsCustomTaskDialogOpen] = useState(false);
+  const [isHistoryPanelOpen, setIsHistoryPanelOpen] = useState(false);
+  
+  // Use undo service for history management
+  const { 
+    canUndo, 
+    canRedo, 
+    undo, 
+    redo, 
+    addToHistory, 
+    isProcessingAction,
+    lastActionDescription
+  } = useUndoService();
 
-  // --- Placeholder for History/Undo/Redo ---
-  const addOperationToHistory = useCallback((updatedQuote: Quote) => {
-    // TODO: Implement actual history tracking logic here
-    console.log("[History Placeholder] Operation recorded for quote:", updatedQuote.id);
-    // For now, just update the canUndo state slightly to show it's hooked up
-    setCanUndo(true); 
+  // Register keyboard shortcuts for undo/redo
+  useUndoRedoShortcuts(undo, redo);
+
+  // Track history state changes
+  const handleHistoryStateChange = useCallback((newState: AppHistoryState) => {
+    console.log("[History] State changed:", newState);
+    if (newState.quotes && newState.quotes.length > 0) {
+      setCustomerQuotes(newState.quotes);
+    }
+    if (newState.currentQuoteId !== undefined) {
+      setCurrentQuoteId(newState.currentQuoteId);
+    }
+    if (newState.customers && newState.customers.length > 0) {
+      setAllCustomers(newState.customers);
+    }
+  }, []);
+
+  // Function to track actions in history
+  const trackAction = useCallback((actionType: string, data?: any) => {
+    // This will be used with the ActionHistoryProvider
+    console.log(`[History] Tracking action: ${actionType}`, data);
   }, []);
 
   // --- CURRENT QUOTE LOGIC ---
@@ -824,14 +848,6 @@ export function PricebookPage() {
   // --- NEW HANDLERS ---
   const handleToggleQuoteSidebar = useCallback(() => {
     setIsQuoteSidebarVisible(prev => !prev);
-  }, []);
-
-  const handleUndo = useCallback(() => {
-    console.log("UNDO action triggered");
-  }, []);
-
-  const handleRedo = useCallback(() => {
-    console.log("REDO action triggered");
   }, []);
 
   const handleQuoteSelect = useCallback((quoteId: string) => {
@@ -902,12 +918,18 @@ export function PricebookPage() {
           }
 
           console.log(`[handleDeleteTask] Final updated quote state for ${quote.id}:`, updatedQuote);
+          // Add to history
+          addToHistory({
+            quotes: prevQuotes.map(q => q.id === currentQuoteId ? updatedQuote : q),
+            currentQuoteId,
+            customers: allCustomers
+          }, `Deleted task from ${tierId}`);
           return updatedQuote;
         }
         return quote; // Return other quotes unchanged
       })
     );
-  }, [currentQuoteId]);
+  }, [currentQuoteId, addToHistory, allCustomers]);
 
   const handleAddTier = useCallback((): void => {
     console.log("Add Tier action triggered");
@@ -1046,7 +1068,7 @@ export function PricebookPage() {
     console.log("Delete Quote:", quoteIdToDelete);
     setCustomerQuotes(prevQuotes => prevQuotes.filter(q => q.id !== quoteIdToDelete));
     if (currentQuoteId === quoteIdToDelete) {
-      setCurrentQuoteId(prevId => {
+      setCurrentQuoteId(_prevId => { // Marked parameter as unused
         const remainingQuotes = customerQuotes.filter(q => q.id !== quoteIdToDelete);
         return remainingQuotes.length > 0 ? remainingQuotes[0].id : null;
       });
@@ -1059,23 +1081,6 @@ export function PricebookPage() {
       prevQuotes.map(q => q.id === quoteIdToRename ? { ...q, name: newName } : q)
     );
   }, []);
-
-  const handleUpdateTaskPrice = useCallback((taskIndex: number, tierId: string, newPrice: number) => {
-    console.log("Update Task Price:", taskIndex, "in Tier:", tierId, "to:", newPrice);
-    setCustomerQuotes(prevQuotes => 
-      prevQuotes.map(q => {
-        if (q.id === currentQuoteId && q.tierTasks[tierId]) {
-          const updatedTasks = [...q.tierTasks[tierId]];
-          if (updatedTasks[taskIndex]) {
-            updatedTasks[taskIndex] = { ...updatedTasks[taskIndex], basePrice: newPrice };
-          }
-          const newTotalPrice = updatedTasks.reduce((sum: number, task: QuoteTask) => sum + task.basePrice + (task.addons?.reduce((aSum: number, a: Addon) => aSum + a.price, 0) ?? 0), 0);
-          return { ...q, tierTasks: { ...q.tierTasks, [tierId]: updatedTasks }, totalPrice: newTotalPrice, updatedAt: new Date().toISOString() };
-        }
-        return q;
-      })
-    );
-  }, [currentQuoteId]);
 
   const handleUpdateTask = useCallback((taskIndex: number, tierId: string, updatedTask: QuoteTask) => {
     console.log(`[handleUpdateTask] Updating task index ${taskIndex} in tier ${tierId}`, updatedTask);
@@ -1095,6 +1100,12 @@ export function PricebookPage() {
                 updatedQuote.totalPrice = recalculateQuoteTotalForSelectedTier(updatedQuote);
             }
             console.log(` -> Task updated, new total for quote ${quote.id} (if selected tier): ${updatedQuote.totalPrice}`);
+            // Add to history
+            addToHistory({
+              quotes: prevQuotes.map(q => q.id === currentQuoteId ? updatedQuote : q),
+              currentQuoteId,
+              customers: allCustomers
+            }, `Updated task in ${tierId}`);
             return updatedQuote;
           } else {
              console.warn(`[handleUpdateTask] Invalid taskIndex ${taskIndex} for tier ${tierId}`);
@@ -1103,9 +1114,8 @@ export function PricebookPage() {
         return quote;
       })
     );
-  }, [currentQuoteId]);
+  }, [currentQuoteId, addToHistory, allCustomers]);
 
-  const handleApplyPercentageAdjustment = useCallback((percentage: number) => console.log("Apply Percentage Adjustment:", percentage), []);
   const handleUpdateAllTasks = useCallback((tierId: string, updatedTasks: QuoteTask[]) => {
       console.log(`[handleUpdateAllTasks] Updating all tasks for tier ${tierId}`, updatedTasks);
       setCustomerQuotes(prevQuotes => 
@@ -1128,7 +1138,7 @@ export function PricebookPage() {
               return quote;
           })
       );
-  }, [currentQuoteId]);
+  }, [currentQuoteId, trackAction, addToHistory, allCustomers]); // Added trackAction dependency
 
   const handleReorderTasks = useCallback((tierId: string, oldIndex: number, newIndex: number) => {
     console.log("Reorder Tasks in Tier:", tierId, "from", oldIndex, "to", newIndex);
@@ -1227,7 +1237,6 @@ export function PricebookPage() {
   const handleDeleteAllTiers = useCallback(() => {
     console.log("Deleting ALL tiers...");
     setAvailableTiers([]); // Clear available tiers
-    const defaultTierIds: string[] = []; // No tiers left
     setCustomerQuotes(prevQuotes =>
       prevQuotes.map(q => {
         const newTierTasks = {}; // All tier tasks removed
@@ -1316,8 +1325,8 @@ export function PricebookPage() {
     });
   }, [handleAddOrIncrementTask]); // Depends only on the core handler
 
-  const handleAddCustomTask = useCallback((newTask: QuoteTask, tierId: string) => {
-    console.log("[handleAddCustomTask] Adding:", newTask, "to Tier:", tierId);
+  const handleAddCustomTask = useCallback((newTask: QuoteTask, _tierId: string) => { // Marked parameter as unused
+    console.log("[handleAddCustomTask] Adding:", newTask, "to Tier:", _tierId);
      if (!currentQuoteId) { /* Error handling */ console.error("Cannot add custom task: No current quote ID."); return; }
      // Check if task already exists if it came from library (optional, based on ID structure)
      // For now, assume custom/library tasks can be added multiple times or have unique IDs
@@ -1325,40 +1334,43 @@ export function PricebookPage() {
      setCustomerQuotes(prevQuotes => 
       prevQuotes.map(quote => {
         if (quote.id === currentQuoteId) {
-          // Ensure the target tier exists
-          if (!(tierId in quote.tierTasks)) { 
-             console.warn(`Target tier ${tierId} does not exist in quote ${quote.id}. Creating tier implicitly.`);
-             // Optionally create the tier if it doesn't exist, or handle error
-             // For now, let's assume it should exist or log a warning and skip.
-             // If you want to create it: quote.tierTasks[tierId] = []; 
-              console.error(`Target tier ${tierId} does not exist in quote ${quote.id}. Cannot add task.`); 
-              return quote; 
+          // Use deep copy only if necessary, immer might handle this if integrated
+          const updatedQuote = JSON.parse(JSON.stringify(quote)); // Moved declaration earlier
+
+          // Ensure the target tier exists before pushing
+          if (!(updatedQuote.tierTasks && _tierId in updatedQuote.tierTasks)) {
+            console.warn(`[handleAddCustomTask] Target tier ${_tierId} does not exist in quote ${quote.id}. Creating tier implicitly? (Skipping for now)`);
+            // Potentially create tier here: updatedQuote.tierTasks[_tierId] = [];
+            return quote; // Skip modification if tier doesn't exist
           }
           
-          // Use deep copy only if necessary, immer might handle this if integrated
-          const updatedQuote = JSON.parse(JSON.stringify(quote)); 
-          
-          updatedQuote.tierTasks[tierId].push(newTask); // Push the new task
+          updatedQuote.tierTasks[_tierId].push(newTask); // Use _tierId
           updatedQuote.updatedAt = new Date().toISOString();
           
           // Recalculate total price if the task was added to the currently selected tier
-          if (tierId === updatedQuote.selectedTierId) {
+          if (_tierId === updatedQuote.selectedTierId) { // Use _tierId
              updatedQuote.totalPrice = recalculateQuoteTotalForSelectedTier(updatedQuote);
-             console.log(` -> Recalculated total price for selected tier ${tierId}: ${updatedQuote.totalPrice}`);
+             console.log(` -> Recalculated total price for selected tier ${_tierId}: ${updatedQuote.totalPrice}`); // Use _tierId
           }
           
-          console.log(` -> Added custom task ${newTask.name} (ID: ${newTask.taskId}) to tier ${tierId}`);
-          addOperationToHistory(updatedQuote); // Add to history after modification
+          console.log(` -> Added custom task ${newTask.name} (ID: ${newTask.taskId}) to tier ${_tierId}`); // Use _tierId
+          trackAction("addCustomTask", { task: newTask, tierId: _tierId }); // Use _tierId
+          // Add to history
+          addToHistory({
+            quotes: prevQuotes.map(q => q.id === currentQuoteId ? updatedQuote : q),
+            currentQuoteId,
+            customers: allCustomers
+          }, `Added custom task to ${_tierId}`);
           return updatedQuote;
         }
         return quote;
       })
      );
     console.log("[handleAddCustomTask] Finished adding custom task.");
-  }, [currentQuoteId, addOperationToHistory]); // Added addOperationToHistory dependency
+  }, [currentQuoteId, trackAction, addToHistory, allCustomers]); // Added trackAction dependency
 
   // Placeholder handler for saving the task to a library/database
-  const handleSaveTaskToLibrary = useCallback((taskData: QuoteTask, tierId: string) => {
+  const handleSaveTaskToLibrary = useCallback((taskData: QuoteTask, _tierId: string) => { // Marked tierId as unused
     // In a real application, this would interact with your API/database
     console.log("[handleSaveTaskToLibrary] Request to save task:", taskData);
     // You might want to add it to a local state representing the library,
@@ -1428,201 +1440,213 @@ export function PricebookPage() {
        setIsCustomTaskDialogOpen(true);
   }, [currentQuoteId]);
 
+  // Create initial state object for history
+  const historyInitialState: AppHistoryState = {
+    quotes: customerQuotes,
+    currentQuoteId,
+    customers: allCustomers
+  };
+
   return (
-    <TooltipProvider>
-      <DashboardMenu isOpen={mainMenuOpen} onClose={() => setMainMenuOpen(false)} />
-      
-      <PageHeaderActions
-        isSidebarVisible={isQuoteSidebarVisible}
-        onToggleSidebar={handleToggleQuoteSidebar}
-        onUndo={handleUndo}
-        onRedo={handleRedo}
-        canUndo={canUndo}
-        canRedo={canRedo}
-        isProcessingAction={isProcessingAction}
-      />
+    <ActionHistoryProvider 
+      initialState={historyInitialState} 
+      onStateChange={handleHistoryStateChange}
+    >
+      <TooltipProvider>
+        <DashboardMenu isOpen={mainMenuOpen} onClose={() => setMainMenuOpen(false)} />
+        
+        <UndoRedoToolbar
+          isSidebarVisible={isQuoteSidebarVisible}
+          onToggleSidebar={handleToggleQuoteSidebar}
+          onUndo={undo}
+          onRedo={redo}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          isProcessingAction={isProcessingAction}
+          lastActionDescription={lastActionDescription}
+          showHistoryPanel={isHistoryPanelOpen}
+          onToggleHistoryPanel={() => setIsHistoryPanelOpen(!isHistoryPanelOpen)}
+        />
 
-      <div className="h-screen flex">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="fixed top-4 left-4 z-50"
-          onClick={() => setMainMenuOpen(!mainMenuOpen)}
-        >
-          <Menu className="h-6 w-6" />
-        </Button>
+        <div className="h-screen flex">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="fixed top-4 left-4 z-50"
+            onClick={() => setMainMenuOpen(!mainMenuOpen)}
+          >
+            <Menu className="h-6 w-6" />
+          </Button>
 
-        <div
-          className={cn(
-            "h-full bg-card border-r transition-all duration-300 ease-in-out flex flex-col",
-            (sidebarOpen || isHovering) ? "w-64" : "w-16"
-          )}
-          onMouseEnter={() => handleSidebarHover(true)}
-          onMouseLeave={() => handleSidebarHover(false)}
-        >
           <div
             className={cn(
-              "flex items-center border-b transition-all duration-300 ease-in-out h-16",
-              "justify-center", 
-              (sidebarOpen || isHovering) ? "px-4" : "", 
-              "sticky top-0 bg-card z-10 flex-shrink-0"
+              "h-full bg-card border-r transition-all duration-300 ease-in-out flex flex-col",
+              (sidebarOpen || isHovering) ? "w-64" : "w-16"
             )}
+            onMouseEnter={() => handleSidebarHover(true)}
+            onMouseLeave={() => handleSidebarHover(false)}
           >
-             {(sidebarOpen || isHovering) && (
-                <h2 className="font-semibold transition-opacity duration-200 text-lg">
-                  Categories
-                </h2>
-             )}
-             {!sidebarOpen && !isHovering && (
-                <div className="w-6 h-6" />
-             )}
+            <div
+              className={cn(
+                "flex items-center border-b transition-all duration-300 ease-in-out h-16",
+                "justify-center", 
+                (sidebarOpen || isHovering) ? "px-4" : "", 
+                "sticky top-0 bg-card z-10 flex-shrink-0"
+              )}
+            >
+               {(sidebarOpen || isHovering) && (
+                  <h2 className="font-semibold transition-opacity duration-200 text-lg">
+                    Categories
+                  </h2>
+               )}
+               {!sidebarOpen && !isHovering && (
+                  <div className="w-6 h-6" />
+               )}
+            </div>
+
+            {(sidebarOpen || isHovering) && (
+              <div className="p-3 border-b flex-shrink-0 flex items-center space-x-2">
+                <div className="relative flex-grow">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                  <Input
+                    placeholder="Search categories..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9 h-9"
+                  />
+                </div>
+                <Tooltip>
+                   <TooltipTrigger asChild>
+                     <div className={!currentQuoteId ? 'cursor-not-allowed' : ''}>
+                       <Button 
+                         variant="outline"
+                         size="icon" 
+                         className="h-9 w-9 flex-shrink-0" 
+                         onClick={handleOpenCustomTaskDialog}
+                         disabled={!currentQuoteId}
+                         style={!currentQuoteId ? { pointerEvents: 'none' } : {}}
+                         title="Add Custom Task to Quote"
+                       >
+                         <ClipboardPlus className="h-4 w-4" />
+                       </Button>
+                     </div>
+                   </TooltipTrigger>
+                   <TooltipContent>
+                      <p>{currentQuoteId ? 'Add Custom Task to Current Quote' : 'Select a quote first'}</p>
+                   </TooltipContent>
+                 </Tooltip>
+              </div>
+            )}
+
+            <div className="flex-grow overflow-y-auto">
+               {searchQuery.trim() === '' ? (
+                   serviceCategories.map((category) => (
+                     <button
+                       key={category.id}
+                       className={cn(
+                         "w-full text-left p-3 hover:bg-accent transition-colors duration-150 flex items-center gap-3",
+                         selectedCategory === category.id ? "bg-accent font-semibold" : "",
+                         (sidebarOpen || isHovering) ? "" : "justify-center"
+                       )}
+                       onClick={() => handleCategorySelect(category.id)}
+                       title={category.name}
+                     >
+                       <category.icon className={cn("h-5 w-5 flex-shrink-0", category.color)} />
+                       {(sidebarOpen || isHovering) && (
+                           <span className="truncate text-sm">{category.name}</span>
+                       )}
+                     </button>
+                   ))
+               ) : (
+                    <>
+                      {searchResults.categories.length > 0 && (
+                          <div className="p-2 pt-3 text-xs font-semibold text-muted-foreground">CATEGORIES</div>
+                      )}
+                      {searchResults.categories.map((category) => (
+                           <button
+                              key={category.id}
+                              className={cn("w-full text-left p-3 hover:bg-accent transition-colors duration-150 flex items-center gap-3", (sidebarOpen || isHovering) ? "" : "justify-center")}
+                              onClick={() => handleCategorySelect(category.id)} title={category.name}
+                            >
+                              <category.icon className={cn("h-5 w-5 flex-shrink-0", category.color)} />
+                              {(sidebarOpen || isHovering) && <span className="truncate text-sm">{category.name}</span>}
+                           </button>
+                      ))}
+                      {searchResults.services.length > 0 && (
+                          <div className="p-2 pt-3 text-xs font-semibold text-muted-foreground">SERVICES</div>
+                      )}
+                      {searchResults.services.map((service) => (
+                           <div key={service.id} className="p-3 text-sm text-muted-foreground flex items-center gap-3" title={service.name}>
+                               {(() => {
+                                  const cat = serviceCategories.find(c => c.id === service.categoryId);
+                                  const Icon = cat ? cat.icon : Wrench;
+                                  const color = cat ? cat.color : 'text-gray-500';
+                                  return <Icon className={cn("h-5 w-5 flex-shrink-0", color)} />;
+                                })()}
+                                {(sidebarOpen || isHovering) && <span className="truncate">{service.name}</span>}
+                           </div>
+                      ))}
+                      {searchResults.categories.length === 0 && searchResults.services.length === 0 && (
+                          <div className="p-4 text-center text-sm text-muted-foreground">No results found.</div>
+                      )}
+                    </>
+                )}
+            </div>
           </div>
 
-          {(sidebarOpen || isHovering) && (
-            <div className="p-3 border-b flex-shrink-0 flex items-center space-x-2">
-              <div className="relative flex-grow">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-                <Input
-                  placeholder="Search categories..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 h-9"
+          <main className="flex-1 p-6 overflow-auto bg-muted/40">
+            {selectedCategoryData ? (
+              <div className="flex-1 overflow-auto p-6">
+                <CategoryView
+                  key={selectedCategoryData.id} 
+                  services={categoryServices}
+                  tiers={availableTiers} 
+                  selectedTierId={currentQuote?.selectedTierId || null}
+                  onAddToQuote={handleAddToQuote}
+                  onAddOrIncrementTask={handleAddOrIncrementTask}
+                  onQuickAddToQuote={handleQuickAddToQuote}
                 />
               </div>
-              <Tooltip>
-                 <TooltipTrigger asChild>
-                   <div className={!currentQuoteId ? 'cursor-not-allowed' : ''}>
-                     <Button 
-                       variant="outline"
-                       size="icon" 
-                       className="h-9 w-9 flex-shrink-0" 
-                       onClick={handleOpenCustomTaskDialog}
-                       disabled={!currentQuoteId}
-                       style={!currentQuoteId ? { pointerEvents: 'none' } : {}}
-                       title="Add Custom Task to Quote"
-                     >
-                       <ClipboardPlus className="h-4 w-4" />
-                     </Button>
-                   </div>
-                 </TooltipTrigger>
-                 <TooltipContent>
-                    <p>{currentQuoteId ? 'Add Custom Task to Current Quote' : 'Select a quote first'}</p>
-                 </TooltipContent>
-               </Tooltip>
-            </div>
-          )}
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-muted-foreground">
+                Select a category to view services.
+              </div>
+            )}
+          </main>
 
-          <div className="flex-grow overflow-y-auto">
-             {searchQuery.trim() === '' ? (
-                 serviceCategories.map((category) => (
-                   <button
-                     key={category.id}
-                     className={cn(
-                       "w-full text-left p-3 hover:bg-accent transition-colors duration-150 flex items-center gap-3",
-                       selectedCategory === category.id ? "bg-accent font-semibold" : "",
-                       (sidebarOpen || isHovering) ? "" : "justify-center"
-                     )}
-                     onClick={() => handleCategorySelect(category.id)}
-                     title={category.name}
-                   >
-                     <category.icon className={cn("h-5 w-5 flex-shrink-0", category.color)} />
-                     {(sidebarOpen || isHovering) && (
-                         <span className="truncate text-sm">{category.name}</span>
-                     )}
-                   </button>
-                 ))
-             ) : (
-                  <>
-                    {searchResults.categories.length > 0 && (
-                        <div className="p-2 pt-3 text-xs font-semibold text-muted-foreground">CATEGORIES</div>
-                    )}
-                    {searchResults.categories.map((category) => (
-                         <button
-                            key={category.id}
-                            className={cn("w-full text-left p-3 hover:bg-accent transition-colors duration-150 flex items-center gap-3", (sidebarOpen || isHovering) ? "" : "justify-center")}
-                            onClick={() => handleCategorySelect(category.id)} title={category.name}
-                          >
-                            <category.icon className={cn("h-5 w-5 flex-shrink-0", category.color)} />
-                            {(sidebarOpen || isHovering) && <span className="truncate text-sm">{category.name}</span>}
-                         </button>
-                    ))}
-                    {searchResults.services.length > 0 && (
-                        <div className="p-2 pt-3 text-xs font-semibold text-muted-foreground">SERVICES</div>
-                    )}
-                    {searchResults.services.map((service) => (
-                         <div key={service.id} className="p-3 text-sm text-muted-foreground flex items-center gap-3" title={service.name}>
-                             {(() => {
-                                const cat = serviceCategories.find(c => c.id === service.categoryId);
-                                const Icon = cat ? cat.icon : Wrench;
-                                const color = cat ? cat.color : 'text-gray-500';
-                                return <Icon className={cn("h-5 w-5 flex-shrink-0", color)} />;
-                              })()}
-                              {(sidebarOpen || isHovering) && <span className="truncate">{service.name}</span>}
-                         </div>
-                    ))}
-                    {searchResults.categories.length === 0 && searchResults.services.length === 0 && (
-                        <div className="p-4 text-center text-sm text-muted-foreground">No results found.</div>
-                    )}
-                  </>
-              )}
-          </div>
-        </div>
-
-        <main className="flex-1 p-6 overflow-auto bg-muted/40">
-          {selectedCategoryData ? (
-            <div className="flex-1 overflow-auto p-6">
-              <CategoryView
-                key={selectedCategoryData.id} 
-                services={categoryServices}
-                tiers={availableTiers} 
-                selectedTierId={currentQuote?.selectedTierId || null}
-                onAddToQuote={handleAddToQuote}
-                onAddOrIncrementTask={handleAddOrIncrementTask}
-                onQuickAddToQuote={handleQuickAddToQuote}
+          {isQuoteSidebarVisible && currentCustomer && (
+            <div className="w-80 flex-shrink-0 h-screen">
+              <CurrentQuoteSidebar
+                quotes={customerQuotes}
+                currentQuoteId={currentQuoteId}
+                customer={currentCustomer}
+                availableTiers={availableTiers}
+                allCustomers={allCustomers}
+                onCustomerSelect={handleCustomerSelect}
+                onQuoteSelect={handleQuoteSelect}
+                onTierSelect={handleTierSelect}
+                onDeleteTask={handleDeleteTask}
+                onAddTier={handleAddTier}
+                onDeleteTier={handleDeleteTier}
+                onRenameTier={handleRenameTier}
+                onPreviewQuote={handlePreviewQuote}
+                onUpdateCustomer={handleUpdateCustomer}
+                onAddQuote={handleAddQuote}
+                onDeleteQuote={handleDeleteQuote}
+                onRenameQuote={handleRenameQuote}
+                onUpdateTask={handleUpdateTask}
+                onUpdateAllTasks={handleUpdateAllTasks}
+                onReorderTasks={handleReorderTasks}
+                onDuplicateTier={handleDuplicateTier}
+                onClearAllTasks={handleClearAllTasks}
+                onDeleteAllQuotes={handleDeleteAllQuotes}
+                onDuplicateQuote={handleDuplicateQuote}
+                onDeleteAllTiers={handleDeleteAllTiers}
               />
             </div>
-          ) : (
-            <div className="flex-1 flex items-center justify-center text-muted-foreground">
-              Select a category to view services.
-            </div>
           )}
-        </main>
-
-        {isQuoteSidebarVisible && currentCustomer && (
-            <div className="w-80 flex-shrink-0 h-screen">
-                <CurrentQuoteSidebar
-                    quotes={customerQuotes}
-                    currentQuoteId={currentQuoteId}
-                    customer={currentCustomer}
-                    availableTiers={availableTiers}
-                    allCustomers={allCustomers}
-                    onCustomerSelect={handleCustomerSelect}
-                    onQuoteSelect={handleQuoteSelect}
-                    onTierSelect={handleTierSelect}
-                    onDeleteTask={handleDeleteTask}
-                    onAddTier={handleAddTier}
-                    onDeleteTier={handleDeleteTier}
-                    onRenameTier={handleRenameTier}
-                    onPreviewQuote={handlePreviewQuote}
-                    onUpdateCustomer={handleUpdateCustomer}
-                    onAddQuote={handleAddQuote}
-                    onDeleteQuote={handleDeleteQuote}
-                    onRenameQuote={handleRenameQuote}
-                    onUpdateTaskPrice={handleUpdateTaskPrice}
-                    onUpdateTask={handleUpdateTask}
-                    onApplyPercentageAdjustment={handleApplyPercentageAdjustment}
-                    onUpdateAllTasks={handleUpdateAllTasks}
-                    onReorderTasks={handleReorderTasks}
-                    onDuplicateTier={handleDuplicateTier}
-                    onClearAllTasks={handleClearAllTasks}
-                    onDeleteAllQuotes={handleDeleteAllQuotes}
-                    onDuplicateQuote={handleDuplicateQuote}
-                    onDeleteAllTiers={handleDeleteAllTiers}
-                />
-            </div>
-        )}
-      </div>
-      <AddCustomTaskDialog 
+        </div>
+        <AddCustomTaskDialog 
           isOpen={isCustomTaskDialogOpen}
           onOpenChange={setIsCustomTaskDialogOpen}
           availableTiers={availableTiers}
@@ -1630,6 +1654,56 @@ export function PricebookPage() {
           onAddCustomTask={handleAddCustomTask}
           onSaveTaskToLibrary={handleSaveTaskToLibrary}
       />
+        {/* History Panel */}
+        <ActionHistoryPanel 
+          isOpen={isHistoryPanelOpen}
+          onClose={() => setIsHistoryPanelOpen(false)}
+          onUndo={undo}
+          onRedo={redo}
+          canUndo={canUndo}
+          canRedo={canRedo}
+        />
     </TooltipProvider>
+    </ActionHistoryProvider>
+  );
+}
+
+// Create a component that wraps PageHeaderActions and implements the undo/redo functionality
+function UndoRedoToolbar({
+  isSidebarVisible,
+  onToggleSidebar,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
+  isProcessingAction,
+  lastActionDescription,
+  showHistoryPanel,
+  onToggleHistoryPanel,
+}: {
+  isSidebarVisible: boolean;
+  onToggleSidebar: () => void;
+  onUndo: () => void;
+  onRedo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
+  isProcessingAction: boolean;
+  lastActionDescription: string;
+  showHistoryPanel: boolean;
+  onToggleHistoryPanel: () => void;
+}) {
+  return (
+    <PageHeaderActions
+      isSidebarVisible={isSidebarVisible}
+      onToggleSidebar={onToggleSidebar}
+      onUndo={onUndo}
+      onRedo={onRedo}
+      canUndo={canUndo}
+      canRedo={canRedo}
+      isProcessingAction={isProcessingAction}
+      lastActionDescription={lastActionDescription}
+      onToggleHistoryPanel={onToggleHistoryPanel}
+      showHistoryPanel={showHistoryPanel}
+    />
   );
 } 

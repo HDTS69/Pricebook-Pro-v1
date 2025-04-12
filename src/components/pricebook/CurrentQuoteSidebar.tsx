@@ -1,12 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Quote, Customer, QuoteTask, Tier, Addon } from "@/types/quote";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Badge } from "@/components/ui/Badge";
 import {
   User,
-  Tag,
   List,
   DollarSign,
   PlusCircle,
@@ -21,24 +18,14 @@ import {
   Eye,
   Mail,
   Smartphone,
-  Undo2,
-  Redo2,
-  PanelRightClose,
   Copy,
   Trash,
   Eraser,
   Users,
   Phone,
 } from "lucide-react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/Select";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -54,7 +41,7 @@ import {
   TooltipContent, 
   TooltipProvider, 
   TooltipTrigger 
-} from "@/components/ui/Tooltip"; // <-- Corrected to PascalCase
+} from "@/components/ui/Tooltip";
 import {
   Dialog,
   DialogContent,
@@ -62,8 +49,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
-  DialogClose,
 } from "@/components/ui/Dialog";
 import {
   DndContext,
@@ -75,7 +60,6 @@ import {
   DragEndEvent,
 } from '@dnd-kit/core';
 import {
-  arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
@@ -86,6 +70,338 @@ import { Switch } from "@/components/ui/Switch";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
+
+// --- Customer Details Section Component ---
+interface CustomerDetailsSectionProps {
+  customer: Customer;
+  allCustomers: Customer[];
+  onUpdateCustomer: (updatedCustomer: Customer) => void;
+  onCustomerSelect: (customerId: string) => void;
+}
+
+function CustomerDetailsSection({
+  customer,
+  allCustomers,
+  onUpdateCustomer,
+  onCustomerSelect,
+}: CustomerDetailsSectionProps) {
+  const [isEditingCustomer, setIsEditingCustomer] = useState<boolean>(false);
+  const [editableCustomer, setEditableCustomer] = useState<Customer | null>(null);
+  const [isSelectingCustomer, setIsSelectingCustomer] = useState<boolean>(false);
+  const [customerSearchQuery, setCustomerSearchQuery] = useState('');
+  const customerNameInputRef = useRef<HTMLInputElement>(null);
+
+  // Effect to reset editable customer when the main customer prop changes or editing stops
+  useEffect(() => {
+    if (customer && !isEditingCustomer) {
+      setEditableCustomer({ ...customer });
+    }
+  }, [customer, isEditingCustomer]);
+
+  // Effect to focus input when editing starts
+  useEffect(() => {
+    if (isEditingCustomer && customerNameInputRef.current) {
+      customerNameInputRef.current.focus();
+    }
+  }, [isEditingCustomer]);
+  
+  // Effect to reset search query and editing state when selection mode changes
+  useEffect(() => { 
+    if (!isSelectingCustomer || isEditingCustomer) {
+        setCustomerSearchQuery('');
+    }
+    if (isSelectingCustomer) {
+        setIsEditingCustomer(false); // Ensure edit mode is off when selecting
+    }
+  }, [isSelectingCustomer, isEditingCustomer]);
+
+  const filteredCustomers = useMemo(() => {
+    const lowerCaseQuery = customerSearchQuery.toLowerCase().trim();
+    if (!lowerCaseQuery) {
+      return allCustomers;
+    }
+    return allCustomers.filter(cust => 
+      cust.name.toLowerCase().includes(lowerCaseQuery) ||
+      cust.email?.toLowerCase().includes(lowerCaseQuery) ||
+      cust.phone?.toLowerCase().includes(lowerCaseQuery) ||
+      cust.address?.toLowerCase().includes(lowerCaseQuery) 
+    );
+  }, [allCustomers, customerSearchQuery]);
+
+  const handleInlineCustomerSelect = (customerId: string) => {
+    onCustomerSelect(customerId);
+    setIsSelectingCustomer(false); // Close selection mode after selection
+  };
+
+  const handleStartEditCustomer = () => { 
+    setEditableCustomer({ ...customer }); // Initialize editable state with current customer
+    setIsEditingCustomer(true); 
+    setIsSelectingCustomer(false); // Ensure selection mode is off
+  };
+  
+  const handleCancelEditCustomer = () => { 
+    setEditableCustomer({ ...customer }); // Reset changes
+    setIsEditingCustomer(false); 
+  };
+
+  const handleSaveCustomer = () => { 
+    if (editableCustomer) { 
+      if (!editableCustomer.name.trim()) { 
+          alert("Customer name cannot be empty."); 
+          return; 
+      } 
+      onUpdateCustomer(editableCustomer); // Call parent handler to save
+      setIsEditingCustomer(false); // Exit editing mode
+    } 
+  };
+
+  const handleCustomerInputChange = (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => { 
+    const { name, value } = event.target; 
+    setEditableCustomer(prev => prev ? { ...prev, [name]: value } : null); 
+  };
+  
+  const handleCustomerKeyDown = (event: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => { 
+    if (event.key === 'Enter' && event.target instanceof HTMLInputElement) { // Only save on Enter in Inputs, not TextArea
+      handleSaveCustomer(); 
+    } else if (event.key === 'Escape') { 
+      handleCancelEditCustomer(); 
+    } 
+  };
+  
+  return (
+    <section className="px-4">
+      <h3 className="text-sm font-semibold mb-2 flex items-center">
+        <User className="h-4 w-4 mr-2" /> 
+        Customer
+        <div className="ml-auto flex items-center gap-1">
+          {isEditingCustomer ? (
+            <>
+              <Button variant="ghost" size="icon" className="h-6 w-6 text-primary" onClick={handleSaveCustomer} title="Save Customer"><Check className="h-4 w-4" /></Button>
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleCancelEditCustomer} title="Cancel Edit"><CancelIcon className="h-4 w-4" /></Button>
+            </>
+          ) : isSelectingCustomer ? (
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setIsSelectingCustomer(false)} title="Cancel Selection"><CancelIcon className="h-4 w-4" /></Button>
+          ) : (
+            <>
+              <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={() => setIsSelectingCustomer(true)} title="Select Customer">
+                  <Users className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={handleStartEditCustomer} title="Edit Customer Details">
+                  <Pencil className="h-4 w-4" />
+              </Button>
+            </>
+          )}
+        </div>
+      </h3>
+      <div className="text-xs bg-muted p-3 rounded-md">
+        {isSelectingCustomer ? (
+          <div className="space-y-2">
+             <Input 
+                placeholder="Search customers..."
+                value={customerSearchQuery}
+                onChange={(e) => setCustomerSearchQuery(e.target.value)}
+                className="h-8 text-xs"
+                autoFocus
+             />
+             <ScrollArea className="h-[150px] border rounded-md">
+               <div className="p-1">
+                 {filteredCustomers.length > 0 ? (
+                   filteredCustomers.map(cust => (
+                     <div 
+                       key={cust.id}
+                       onClick={() => handleInlineCustomerSelect(cust.id)}
+                       className={`flex flex-col p-2 hover:bg-accent hover:text-accent-foreground rounded-sm cursor-pointer transition-colors duration-150 text-xs ${cust.id === customer.id ? 'bg-accent/50 font-medium' : ''}`}
+                     >
+                       <p className="font-semibold text-xs mb-0.5 truncate">{cust.name}</p>
+                       <div className="flex items-center text-[11px] text-muted-foreground truncate">
+                         <Mail className="h-2.5 w-2.5 mr-1 shrink-0"/>
+                         <span>{cust.email || 'N/A'}</span>
+                       </div>
+                       <div className="flex items-center text-[11px] text-muted-foreground truncate">
+                         <Phone className="h-2.5 w-2.5 mr-1 shrink-0"/>
+                         <span>{cust.phone || 'N/A'}</span>
+                       </div>
+                     </div>
+                   ))
+                 ) : (
+                   <p className="text-xs text-muted-foreground text-center p-4">No customers found.</p>
+                 )}
+               </div>
+             </ScrollArea>
+           </div>
+        ) : isEditingCustomer && editableCustomer ? (
+           <>
+            <div className="flex items-center h-6 mb-1"> 
+              <Label htmlFor="customerName" className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased">Name</Label>
+              <Input 
+                ref={customerNameInputRef} 
+                id="customerName" 
+                name="name" 
+                value={editableCustomer.name} 
+                onChange={handleCustomerInputChange} 
+                onKeyDown={handleCustomerKeyDown} 
+                className="p-0 h-full font-sans text-foreground antialiased flex-grow bg-transparent border-0 shadow-none focus-visible:ring-0 rounded-none"
+                style={{ fontSize: '0.75rem', lineHeight: '1.25' }} /> 
+            </div>
+            <div className="flex items-center h-6 mb-1"> 
+              <Label htmlFor="customerEmail" className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased">Email</Label>
+              <Input 
+                id="customerEmail" 
+                name="email" 
+                type="email" 
+                value={editableCustomer.email || ""} 
+                onChange={handleCustomerInputChange} 
+                onKeyDown={handleCustomerKeyDown} 
+                className="p-0 h-full font-sans text-foreground antialiased flex-grow bg-transparent border-0 shadow-none focus-visible:ring-0 rounded-none"
+                style={{ fontSize: '0.75rem', lineHeight: '1.25' }} /> 
+            </div>
+            <div className="flex items-center h-6 mb-1"> 
+              <Label htmlFor="customerPhone" className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased">Phone</Label>
+              <Input 
+                id="customerPhone" 
+                name="phone" 
+                value={editableCustomer.phone || ""} 
+                onChange={handleCustomerInputChange} 
+                onKeyDown={handleCustomerKeyDown} 
+                className="p-0 h-full font-sans text-foreground antialiased flex-grow bg-transparent border-0 shadow-none focus-visible:ring-0 rounded-none"
+                style={{ fontSize: '0.75rem', lineHeight: '1.25' }} /> 
+            </div>
+            <div className="flex items-start h-auto mb-0"> 
+              <Label htmlFor="customerAddress" className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased pt-px">Address</Label>
+              <Textarea 
+                id="customerAddress" 
+                name="address" 
+                value={editableCustomer.address || ""} 
+                onChange={handleCustomerInputChange} 
+                onKeyDown={handleCustomerKeyDown} 
+                rows={1} 
+                className="p-0 font-sans text-foreground antialiased flex-grow bg-transparent border-0 shadow-none focus-visible:ring-0 rounded-none resize-none overflow-hidden min-h-[24px]"
+                style={{ fontSize: '0.75rem', lineHeight: '1.25' }} />
+            </div>
+           </>
+        ) : (
+           <>
+            <div className="flex items-center h-6 mb-1"> 
+              <span className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased">Name</span> 
+              <span className="text-xs font-sans text-foreground antialiased flex-grow truncate" style={{ lineHeight: '1.25' }}>{customer.name}</span>
+            </div>
+            <div className="flex items-center h-6 mb-1"> 
+              <span className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased">Email</span> 
+              <span className="text-xs font-sans text-foreground antialiased flex-grow truncate" style={{ lineHeight: '1.25' }}>{customer.email || <span className="text-muted-foreground italic">N/A</span>}</span>
+            </div>
+            <div className="flex items-center h-6 mb-1"> 
+              <span className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased">Phone</span> 
+              <span className="text-xs font-sans text-foreground antialiased flex-grow truncate" style={{ lineHeight: '1.25' }}>{customer.phone || <span className="text-muted-foreground italic">N/A</span>}</span>
+            </div>
+            <div className="flex items-start h-auto mb-0"> 
+              <span className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased pt-px">Address</span>
+              <span className="text-xs font-sans text-foreground antialiased flex-grow break-words whitespace-normal min-h-[24px]" style={{ lineHeight: '1.25' }}>{customer.address || <span className="text-muted-foreground italic">N/A</span>}</span>
+            </div>
+           </>
+        )}
+      </div>
+    </section>
+  );
+}
+// --- End Customer Details Section ---
+
+// --- Quote Dropdown Section Component ---
+interface QuoteDropdownSectionProps {
+  customerQuotes: Quote[];
+  currentQuote: Quote | null;
+  baseQuoteNumber: string;
+  customer: Customer; // Needed for handleDeleteAll
+  onQuoteSelect: (quoteId: string) => void;
+  onAddQuote: (nextSequenceNumber: number) => void;
+  onRenameQuote: (quoteId: string, newName: string) => void;
+  onDeleteQuote: (quoteId: string) => void;
+  onDuplicateQuote: (quoteId: string) => void;
+  onDeleteAllQuotes: (customerId: string) => void;
+  formatCurrency: (amount: number) => string;
+}
+
+function QuoteDropdownSection({
+  customerQuotes,
+  currentQuote,
+  baseQuoteNumber,
+  onAddQuote,
+}: QuoteDropdownSectionProps) {
+  const [isQuoteDropdownOpen, setIsQuoteDropdownOpen] = useState(false);
+  const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null);
+  const quoteInputRef = useRef<HTMLInputElement>(null);
+
+  // Effect to focus input when renaming starts
+  useEffect(() => {
+    if (editingQuoteId && quoteInputRef.current) {
+      quoteInputRef.current.focus();
+    }
+  }, [editingQuoteId]);
+
+  // Effect to reset confirmation states when dropdown closes or quote changes
+  useEffect(() => { 
+    if (!isQuoteDropdownOpen || currentQuote?.id) { // Reset if dropdown closes OR current quote changes
+        setIsQuoteDropdownOpen(false);
+        setEditingQuoteId(null);
+    }
+  }, [isQuoteDropdownOpen, currentQuote?.id]);
+
+
+
+
+
+
+
+
+  const handleAddNewQuote = () => {
+    const currentSequenceNumbers = customerQuotes.map(q => q.sequenceNumber);
+    const nextSequenceNumber = currentSequenceNumbers.length > 0 ? Math.max(...currentSequenceNumbers) + 1 : 1;
+    onAddQuote(nextSequenceNumber);
+    setIsQuoteDropdownOpen(false); // Close dropdown after adding
+  };
+
+
+
+
+  return (
+    <section className="/*px-4*/">
+      <Label className="text-xs text-muted-foreground block mb-1">Current Quote</Label>
+      <DropdownMenu 
+        open={isQuoteDropdownOpen} 
+        onOpenChange={(open: boolean) => {
+            if (currentQuote) {
+                setIsQuoteDropdownOpen(open);
+            } else if (open) {
+                handleAddNewQuote();
+            }
+        }} 
+        modal={false} 
+      >
+        <DropdownMenuTrigger asChild>
+          <Button 
+            variant="outline" 
+            className="w-full h-8 text-sm justify-between font-regular" 
+          >
+            <span>
+              {currentQuote ? (
+                <>
+                  {baseQuoteNumber} / {currentQuote.sequenceNumber}
+                  {currentQuote.name !== String(currentQuote.sequenceNumber) && ` - ${currentQuote.name}`}
+                </>
+              ) : (
+                <span>Create new quote</span> 
+              )}
+            </span>
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuPortal>
+          {/* ... DropdownMenuContent ... */}
+        </DropdownMenuPortal>
+      </DropdownMenu>
+    </section>
+  );
+}
+// --- End Quote Dropdown Section ---
 
 // --- Fully functional Edit Task Dialog ---
 interface EditTaskDialogProps {
@@ -221,9 +537,31 @@ function EditTaskDialog({
 }
 // --- End Edit Task Dialog ---
 
-const EditAllTasksDialog = ({ isOpen, onOpenChange, tierId, tierName, tasks, onUpdateAllTasks }: any) => {
-  useEffect(() => { if (isOpen) console.log("Placeholder EditAllTasksDialog:", tierId); }, [isOpen, tierId]);
+interface EditAllTasksDialogProps {
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
+  tierId: string;
+  tierName: string;
+  tasks: ReorderableQuoteTask[];
+  onUpdateAllTasks: (updatedTasks: QuoteTask[]) => void;
+}
+
+const EditAllTasksDialog = ({ 
+  isOpen, 
+  onOpenChange, 
+  tierId, 
+  tierName, 
+  tasks}: EditAllTasksDialogProps) => {
+  useEffect(() => { 
+    if (isOpen) console.log("Placeholder EditAllTasksDialog:", tierId); 
+  }, [isOpen, tierId]);
+  
+  const handleClose = useCallback(() => {
+    onOpenChange(false);
+  }, [onOpenChange]);
+  
   if (!isOpen) return null;
+  
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange} modal={false}>
       <DialogContent>
@@ -232,15 +570,15 @@ const EditAllTasksDialog = ({ isOpen, onOpenChange, tierId, tierName, tasks, onU
         </DialogHeader>
         <p>Contains {tasks?.length} tasks.</p>
         <DialogFooter>
-          <Button onClick={() => onOpenChange(false)}>Close</Button>
+          <Button onClick={handleClose}>Close</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 };
 
-// --- Sortable Task Item Component ---
-const SortableTaskItem = ({ id, task, index, tierId, onDelete, onEdit, onUpdateQuantity }:
+// --- Moved SortableTaskItem Component ---
+const SortableTaskItem = ({ id, task, index, onDelete, onEdit, onUpdateQuantity }:
     { 
         id: string; 
         task: QuoteTask; 
@@ -253,10 +591,13 @@ const SortableTaskItem = ({ id, task, index, tierId, onDelete, onEdit, onUpdateQ
 ) => {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
   const [isExpanded, setIsExpanded] = useState(false);
-  // State for inline quantity editing
   const [inlineQuantity, setInlineQuantity] = useState<string>((task.quantity ?? 1).toString());
 
-  // Reset inline quantity if the task prop changes from parent (e.g., after external update)
+  // Encapsulated currency formatting
+  const formatCurrencyStatic = useCallback((amount: number): string => {
+    return new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(amount);
+  }, []);
+
   useEffect(() => {
       setInlineQuantity((task.quantity ?? 1).toString());
   }, [task.quantity]);
@@ -265,87 +606,84 @@ const SortableTaskItem = ({ id, task, index, tierId, onDelete, onEdit, onUpdateQ
     transform: CSS.Transform.toString(transform),
     transition,
   };
-  const toggleExpand = () => setIsExpanded(!isExpanded);
+  
+  const toggleExpand = useCallback(() => {
+    setIsExpanded(prev => !prev);
+  }, []);
 
-  // Handler to process and save inline quantity change
-  const handleQuantitySave = () => {
+  const handleQuantitySave = useCallback(() => {
     const currentVal = parseInt(inlineQuantity, 10);
     const originalVal = task.quantity ?? 1;
-
-    // Save only if it's a valid number >= 1 and different from the original
     if (!isNaN(currentVal) && currentVal >= 1 && currentVal !== originalVal) {
         onUpdateQuantity(currentVal);
-        // No need to setInlineQuantity here, useEffect will handle sync if prop updates
     } else {
-        // If invalid or unchanged, reset input to original value
         setInlineQuantity(originalVal.toString());
     }
-  };
+  }, [inlineQuantity, task.quantity, onUpdateQuantity]);
 
-  // Update local state on input change
-  const handleQuantityInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleQuantityInputChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     setInlineQuantity(event.target.value);
-  };
+  }, []);
 
-  const handleQuantityKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleQuantityKeyDown = useCallback((event: React.KeyboardEvent<HTMLInputElement>) => {
       if (event.key === 'Enter') {
           handleQuantitySave();
-          (event.target as HTMLInputElement).blur(); // Remove focus
+          (event.target as HTMLInputElement).blur();
       } else if (event.key === 'Escape') {
-          setInlineQuantity((task.quantity ?? 1).toString()); // Reset on escape
-          (event.target as HTMLInputElement).blur(); // Remove focus
+          setInlineQuantity((task.quantity ?? 1).toString());
+          (event.target as HTMLInputElement).blur();
       }
-  };
+  }, [handleQuantitySave, task.quantity]);
 
-  const handleTaskItemDeleteClick = (event: React.MouseEvent) => {
+  const handleTaskItemDeleteClick = useCallback((event: React.MouseEvent) => {
     event.stopPropagation();
     console.log(`[SortableTaskItem] Delete button clicked for task index: ${index}, ID: ${id}`);
-    onDelete(); // Call the prop passed from parent
-  };
+    onDelete();
+  }, [index, id, onDelete]);
+
+  const handleEditClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    onEdit();
+  }, [onEdit]);
+
+  const handleInputClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+  }, []);
 
   return (
     <div ref={setNodeRef} style={style} {...attributes} className="border p-2 rounded bg-background flex flex-col mb-1 touch-none">
-      {/* Top Row: Title, Quantity, Price, Buttons */}
       <div className="flex justify-between items-start w-full">
-        {/* Clickable Title Area (Handles Dragging) */}
         <button 
           onClick={toggleExpand} 
           className="flex-grow text-left mr-2 focus:outline-none focus:ring-1 focus:ring-ring rounded-sm p-0.5 -m-0.5"
           title={isExpanded ? "Hide description" : "Show description"}
-          {...listeners} // Allow dragging from title area
+          {...listeners}
         >
-          {/* Removed quantity display from here */}
           <span className="block break-words font-medium text-sm">{task.name}</span>
         </button>
-        {/* Quantity, Price & Action Buttons */} 
         <div className="flex items-center flex-shrink-0 space-x-1 pt-0.5">
-           {/* === Inline Quantity Input === */}
             <Input 
                 type="number"
                 value={inlineQuantity}
-                onChange={handleQuantityInputChange} // Update local state
-                onBlur={handleQuantitySave} // Save on blur
-                onKeyDown={handleQuantityKeyDown} // Save on Enter, Reset on Escape
+                onChange={handleQuantityInputChange}
+                onBlur={handleQuantitySave}
+                onKeyDown={handleQuantityKeyDown}
                 min="1"
                 step="1"
-                // Removed classes hiding the spinner arrows
                 className="h-6 w-12 text-xs px-1 text-center"
-                onClick={(e) => e.stopPropagation()} // Prevent click from propagating to toggleExpand or drag listeners
+                onClick={handleInputClick}
                 aria-label={`Quantity for ${task.name}`}
             />
-          {/* === End Inline Quantity Input === */}
           <span className="text-sm font-semibold mr-1">{formatCurrencyStatic(task.basePrice)}</span>
-          {/* Action Buttons */} 
           <TooltipProvider delayDuration={300}>
             <Tooltip>
               <TooltipTrigger asChild>
-                 <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => {e.stopPropagation(); onEdit();}} title="Edit Task Details"><Pencil className="h-3 w-3"/></Button>
+                 <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleEditClick} title="Edit Task Details"><Pencil className="h-3 w-3"/></Button>
               </TooltipTrigger>
               <TooltipContent side="top"><p>Edit Details</p></TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                 {/* Updated onClick to use the new handler with logging */}
                 <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={handleTaskItemDeleteClick} title="Delete Task"><Trash2 className="h-3 w-3"/></Button>
               </TooltipTrigger>
               <TooltipContent side="top"><p>Delete Task</p></TooltipContent>
@@ -353,47 +691,81 @@ const SortableTaskItem = ({ id, task, index, tierId, onDelete, onEdit, onUpdateQ
           </TooltipProvider>
         </div>
       </div>
-      {/* Conditionally Rendered Description */} 
       {isExpanded && task.description && (
         <p className="text-xs text-muted-foreground break-words mt-1.5 pl-1 pr-1 w-full">
           {task.description}
         </p>
       )}
     </div>
-  ); // Fixed missing closing curly brace
+  );
 };
+// --- End SortableTaskItem Component ---
 
-const formatCurrencyStatic = (amount: number): string => {
-  return new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(amount);
+// --- ReorderableQuoteTask Type (if not defined globally) ---
+// Assuming QuoteTask is defined globally or imported
+type ReorderableQuoteTask = QuoteTask & { tempDndId: string };
+// --- End Type Definition ---
+
+// --- Moved QuoteTasksList Component ---
+interface QuoteTasksListProps {
+  tasks: ReorderableQuoteTask[];
+  selectedTierId: string;
+  sensors: ReturnType<typeof useSensors>; // Pass sensors down
+  onDragEnd: (event: DragEndEvent) => void;
+  onDeleteTask: (taskIndex: number, tierId: string) => void;
+  onEditTask: (task: QuoteTask, index: number, tierId: string) => void;
+  onUpdateTaskQuantity: (taskIndex: number, tierId: string, newQuantity: number) => void;
+}
+
+const QuoteTasksList = ({ 
+  tasks, 
+  selectedTierId, 
+  sensors, 
+  onDragEnd,
+  onDeleteTask,
+  onEditTask,
+  onUpdateTaskQuantity,
+}: QuoteTasksListProps) => {
+  if (tasks.length === 0) {
+    return <p className="text-sm text-muted-foreground text-center py-4">No tasks for this tier.</p>;
+  }
+
+  // Create a memoized handler for each task to avoid recreating on each render
+  const getHandleDeleteTask = useCallback((index: number) => () => {
+    console.log(`[QuoteTasksList -> SortableTaskItem] onDelete triggered for task index: ${index}, tierId: ${selectedTierId}`);
+    onDeleteTask(index, selectedTierId);
+  }, [onDeleteTask, selectedTierId]);
+
+  const getHandleEditTask = useCallback((task: QuoteTask, index: number) => () => {
+    onEditTask(task, index, selectedTierId);
+  }, [onEditTask, selectedTierId]);
+
+  const getHandleUpdateQuantity = useCallback((index: number) => (newQuantity: number) => {
+    onUpdateTaskQuantity(index, selectedTierId, newQuantity);
+  }, [onUpdateTaskQuantity, selectedTierId]);
+
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+      <SortableContext items={tasks.map(t => t.tempDndId)} strategy={verticalListSortingStrategy}>
+        <div className="space-y-1"> 
+          {tasks.map((task, index) => (
+            <SortableTaskItem
+              key={task.tempDndId} // Use stable ID for key
+              id={task.tempDndId}  // Use stable ID for dnd-kit
+              task={task}
+              index={index}
+              tierId={selectedTierId}
+              onDelete={getHandleDeleteTask(index)}
+              onEdit={getHandleEditTask(task, index)}
+              onUpdateQuantity={getHandleUpdateQuantity(index)}
+            />
+          ))}
+        </div>
+      </SortableContext>
+    </DndContext>
+  );
 };
-
-const mockOtherQuotes: Quote[] = [
-  {
-    id: "quote-123", quoteNumber: "Q-1001", sequenceNumber: 1, name: "Initial Quote", customerId: "cust-1", status: "Sent",
-    tierTasks: { "tier-bronze": [{ taskId: "task-2", name: "Replace HW Heater", description: "Electric 50L", basePrice: 1200, addons: [] }] },
-    selectedTierId: "tier-bronze", adjustments: [], totalPrice: 1200,
-    createdAt: new Date(Date.now() - 86400000).toISOString(), updatedAt: new Date(Date.now() - 86400000).toISOString(), sentAt: new Date(Date.now() - 86400000).toISOString(),
-  },
-  {
-    id: "quote-456", quoteNumber: "Q-1001", sequenceNumber: 2, name: "Ceiling Fan Install", customerId: "cust-1", status: "Accepted",
-    tierTasks: { "tier-bronze": [{ taskId: "task-4", name: "Install Ceiling Fan", description: "Std wiring", basePrice: 180, addons: [] }] },
-    selectedTierId: "tier-bronze", adjustments: [{ adjustmentId: "adj-1", type: "manual", description: "Discount", value: -20, amount: -20 }], totalPrice: 160,
-    createdAt: new Date(Date.now() - 172800000).toISOString(), updatedAt: new Date(Date.now() - 172800000).toISOString(), acceptedAt: new Date(Date.now() - 172800000).toISOString(),
-  },
-  {
-    id: "quote-789", quoteNumber: "Q-1001", sequenceNumber: 3, name: "Drain & Dishwasher", customerId: "cust-1", status: "Draft",
-    tierTasks: {
-      "tier-bronze": [{ taskId: "task-3", name: "Clear Blocked Drain", description: "Std equipment", basePrice: 250, addons: [] }],
-      "tier-silver": [
-        { taskId: "task-1", name: "Install Dishwasher", description: "Standard", basePrice: 350, addons: [{ addonId: "addon-1", name: "Warranty", price: 50 }] },
-        { taskId: "task-3", name: "Clear Blocked Drain", description: "Std equipment", basePrice: 250, addons: [] }
-      ],
-      "tier-gold": [],
-    },
-    selectedTierId: "tier-silver", adjustments: [], totalPrice: (350 + 50 + 250),
-    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-  },
-];
+// --- End QuoteTasksList Component ---
 
 interface CurrentQuoteSidebarProps {
   quotes: Quote[];
@@ -413,9 +785,7 @@ interface CurrentQuoteSidebarProps {
   onAddQuote: (nextSequenceNumber: number) => void;
   onDeleteQuote: (quoteId: string) => void;
   onRenameQuote: (quoteId: string, newName: string) => void;
-  onUpdateTaskPrice: (taskIndex: number, tierId: string, newPrice: number) => void;
   onUpdateTask: (taskIndex: number, tierId: string, updatedTask: QuoteTask) => void;
-  onApplyPercentageAdjustment: (percentage: number) => void;
   onUpdateAllTasks: (tierId: string, updatedTasks: QuoteTask[]) => void;
   onReorderTasks: (tierId: string, oldIndex: number, newIndex: number) => void;
   onDuplicateTier: (sourceTierId: string, destinationTierId: string | null, newTierName?: string) => void;
@@ -436,9 +806,7 @@ const calculateQuoteTotalPriceFromTasks = (tasks: QuoteTask[]): number => {
 
 const applyProportionalAdjustment = (
   targetTotalPrice: number,
-  currentTasks: QuoteTask[],
-  tierId: string
-): { updatedTasks: QuoteTask[], finalTotal: number } | null => {
+  currentTasks: QuoteTask[]): { updatedTasks: QuoteTask[], finalTotal: number } | null => {
   if (!currentTasks || currentTasks.length === 0) return null;
 
   // Calculate the effective total original price considering quantities
@@ -487,6 +855,155 @@ const applyProportionalAdjustment = (
   return { updatedTasks, finalTotal: finalRecalculatedTotal };
 };
 
+// --- NEW: QuotePricingDetails Component ---
+interface QuotePricingDetailsProps {
+  currentQuote: Quote | null;
+  selectedTierId: string | null;
+  getTierName: (tierId?: string) => string;
+  formatCurrency: (amount: number) => string;
+  showAdjustmentSlider: boolean;
+  setShowAdjustmentSlider: React.Dispatch<React.SetStateAction<boolean>>;
+  adjustmentPercentage: number;
+  setAdjustmentPercentage: React.Dispatch<React.SetStateAction<number>>;
+  onUpdateAllTasks: (tierId: string, updatedTasks: QuoteTask[]) => void;
+  // Include calculateTotalPrice and applyAdjustment helper functions via props or define locally if specific
+  calculateTierTotalPrice: (tierId: string) => number;
+  applyProportionalAdjustment: (
+    targetTotalPrice: number,
+    currentTasks: QuoteTask[],
+    tierId: string
+  ) => { updatedTasks: QuoteTask[], finalTotal: number } | null;
+}
+
+const QuotePricingDetails = ({
+  currentQuote,
+  selectedTierId,
+  getTierName,
+  formatCurrency,
+  showAdjustmentSlider,
+  setShowAdjustmentSlider,
+  adjustmentPercentage,
+  setAdjustmentPercentage,
+  onUpdateAllTasks,
+  calculateTierTotalPrice,
+  applyProportionalAdjustment,
+}: QuotePricingDetailsProps) => {
+  const [isEditingTotalPrice, setIsEditingTotalPrice] = useState<boolean>(false);
+  const [editingTotalPriceStr, setEditingTotalPriceStr] = useState<string>("");
+  const totalPriceInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isEditingTotalPrice && totalPriceInputRef.current) {
+      totalPriceInputRef.current.focus();
+    }
+  }, [isEditingTotalPrice]);
+
+  // === MOVED HANDLERS ===
+  const handleStartEditTotalPrice = (): void => {
+    if (!currentQuote || showAdjustmentSlider) return;
+    setEditingTotalPriceStr(currentQuote.totalPrice.toFixed(2));
+    setIsEditingTotalPrice(true);
+  };
+
+  const handleCancelEditTotalPrice = (): void => {
+    setIsEditingTotalPrice(false);
+    setEditingTotalPriceStr("");
+  };
+
+  const handleSaveTotalPrice = (): void => {
+    if (!currentQuote || !selectedTierId) return;
+    const newTotalPrice = parseFloat(editingTotalPriceStr);
+    if (isNaN(newTotalPrice) || newTotalPrice < 0 || newTotalPrice === currentQuote.totalPrice) {
+      handleCancelEditTotalPrice();
+      return;
+    }
+    const currentTierTasks = currentQuote.tierTasks[selectedTierId] || [];
+    if (!currentTierTasks || currentTierTasks.length === 0) {
+      handleCancelEditTotalPrice();
+      return;
+    }
+    const adjustmentResult = applyProportionalAdjustment(newTotalPrice, currentTierTasks, selectedTierId);
+    if (!adjustmentResult) {
+      handleCancelEditTotalPrice();
+      return;
+    }
+    onUpdateAllTasks(selectedTierId, adjustmentResult.updatedTasks);
+    setAdjustmentPercentage(0); // Reset slider percentage after manual total edit
+    handleCancelEditTotalPrice();
+  };
+
+  const handleTotalPriceKeyDown = (event: React.KeyboardEvent<HTMLInputElement>): void => {
+    if (event.key === 'Enter') handleSaveTotalPrice();
+    else if (event.key === 'Escape') handleCancelEditTotalPrice();
+  };
+  // === END MOVED HANDLERS ===
+  
+  return (
+    <section>
+      <h3 className="text-sm font-semibold mb-2 flex items-center"><DollarSign className="h-4 w-4 mr-2" /> Pricing</h3>
+      <div className="text-xs space-y-2 bg-muted p-3 rounded-md">
+        {currentQuote && selectedTierId ? (
+          <>
+            <div className="flex justify-between">
+              <span>Tier:</span><span className="font-semibold">{getTierName(selectedTierId)}</span>
+            </div>
+            <Separator className="my-4" /> {/* Ensure Separator is imported/available */}
+            <div className="flex items-center justify-between space-x-2 mt-2">
+              <Label htmlFor="adjustment-toggle" className="text-sm font-regular">Enable Price Adjustment</Label>
+              <Switch id="adjustment-toggle" checked={showAdjustmentSlider} onCheckedChange={(checked: boolean) => { setShowAdjustmentSlider(checked); if (!checked) setAdjustmentPercentage(0); }} disabled={!currentQuote} />
+            </div>
+            {showAdjustmentSlider && (
+              <div className="space-y-2 pt-2">
+                <Label htmlFor="adjustment-slider" className="text-sm font-regular">Adjust Total: {adjustmentPercentage}%</Label>
+                <Slider
+                  id="adjustment-slider" min={-100} max={100} step={1} value={[adjustmentPercentage]}
+                  onValueChange={(value: number[]) => setAdjustmentPercentage(value[0])}
+                  onValueCommit={(value: number[]) => {
+                    if (!currentQuote || !selectedTierId) return;
+                    const committedPercentage = value[0];
+                    const currentTierTotal = calculateTierTotalPrice(selectedTierId);
+                    const targetTotalPrice = currentTierTotal * (1 + committedPercentage / 100);
+                    const currentTasks = currentQuote.tierTasks[selectedTierId] || [];
+                    const adjustmentResult = applyProportionalAdjustment(targetTotalPrice, currentTasks, selectedTierId);
+                    if (adjustmentResult) {
+                      onUpdateAllTasks(selectedTierId, adjustmentResult.updatedTasks);
+                    } else {
+                      console.error("Slider adjustment failed.");
+                    }
+                  }}
+                  className="[&>span:first-child]:h-1"
+                  disabled={!currentQuote}
+                />
+                <div className="flex justify-between text-xs text-muted-foreground"><span>-100%</span><span>+100%</span></div>
+              </div>
+            )}
+            {currentQuote.adjustments.length > 0 && (<div className="pt-1"><Label className="text-xs text-muted-foreground">Manual Adjustments:</Label><p className="text-xs italic">(Display not implemented)</p></div>)}
+            <Separator className="my-2" />
+            <div className="flex justify-between font-semibold text-sm pt-1">
+              <span>Total:</span>
+              {isEditingTotalPrice && currentQuote ? (
+                <div className="flex items-center gap-1">
+                  <span className="font-regular text-xs mr-1">$</span>
+                  <Input ref={totalPriceInputRef} type="number" step="0.01" value={editingTotalPriceStr} onChange={(e) => setEditingTotalPriceStr(e.target.value)} onKeyDown={handleTotalPriceKeyDown} onBlur={handleSaveTotalPrice} className="h-6 text-sm w-24 font-semibold" disabled={!currentQuote} />
+                  <Button variant="ghost" size="icon" className="h-5 w-5" onClick={handleSaveTotalPrice} title="Save" disabled={!currentQuote}><Check className="h-3 w-3 text-primary"/></Button>
+                  <Button variant="ghost" size="icon" className="h-5 w-5" onClick={handleCancelEditTotalPrice} title="Cancel" disabled={!currentQuote}><CancelIcon className="h-3 w-3"/></Button>
+                </div>
+              ) : (
+                <span className={`cursor-pointer hover:bg-secondary px-1 rounded ${!currentQuote ? 'cursor-not-allowed opacity-50' : ''}`} title={!currentQuote ? 'No quote selected' : showAdjustmentSlider ? 'Disable adjustment to edit total' : 'Click to edit total'} onClick={currentQuote && !showAdjustmentSlider ? handleStartEditTotalPrice : undefined}>
+                  {formatCurrency(currentQuote?.totalPrice ?? 0)}
+                </span>
+              )}
+            </div>
+          </>
+        ) : (
+          <p className="text-sm text-muted-foreground text-center py-4">{currentQuote ? "Select a tier to view pricing." : "Select a quote to view pricing."}</p>
+        )}
+      </div>
+    </section>
+  );
+};
+// --- End QuotePricingDetails Component ---
+
 export function CurrentQuoteSidebar({
   quotes,
   currentQuoteId,
@@ -505,9 +1022,7 @@ export function CurrentQuoteSidebar({
   onAddQuote,
   onDeleteQuote,
   onRenameQuote,
-  onUpdateTaskPrice,
   onUpdateTask,
-  onApplyPercentageAdjustment,
   onUpdateAllTasks,
   onReorderTasks,
   onDuplicateTier,
@@ -564,11 +1079,8 @@ export function CurrentQuoteSidebar({
   const [tierConfirmDeleteId, setTierConfirmDeleteId] = useState<string | null>(null);
   const [isProcessingAction, setIsProcessingAction] = useState<boolean>(false);
   const [isEditingCustomer, setIsEditingCustomer] = useState<boolean>(false);
-  const [editableCustomer, setEditableCustomer] = useState<Customer | null>(null);
-  const [isQuoteDropdownOpen, setIsQuoteDropdownOpen] = useState(false);
-  const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null);
-  const [editingQuoteName, setEditingQuoteName] = useState<string>("");
-  const [confirmingDeleteQuoteId, setConfirmingDeleteQuoteId] = useState<string | null>(null);
+  const [isQuoteDropdownOpen, setIsQuoteDropdownOpen] = useState(false); // Restored setter
+  const [editingQuoteId, ] = useState<string | null>(null); // setEditingQuoteId is declared but its value is never read.
   const [isEditingSendEmail, setIsEditingSendEmail] = useState<boolean>(false);
   const [tempSendEmail, setTempSendEmail] = useState<string>("");
   const [isEditingSendSms, setIsEditingSendSms] = useState<boolean>(false);
@@ -576,10 +1088,6 @@ export function CurrentQuoteSidebar({
   const [quotesToSendIds, setQuotesToSendIds] = useState<string[]>([]);
   const [disabledEmailSendClicks, setDisabledEmailSendClicks] = useState<number>(0);
   const [disabledSmsSendClicks, setDisabledSmsSendClicks] = useState<number>(0);
-  const [showEmailSelectWarning, setShowEmailSelectWarning] = useState<boolean>(false);
-  const [showSmsSelectWarning, setShowSmsSelectWarning] = useState<boolean>(false);
-  const [editingTaskPriceIndex, setEditingTaskPriceIndex] = useState<number | null>(null);
-  const [editingTaskPriceStr, setEditingTaskPriceStr] = useState<string>("");
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingTaskDetails, setEditingTaskDetails] = useState<{ task: QuoteTask; index: number; tierId: string } | null>(null);
   const [isEditAllTasksDialogOpen, setIsEditAllTasksDialogOpen] = useState(false);
@@ -587,20 +1095,15 @@ export function CurrentQuoteSidebar({
   const [showAdjustmentSlider, setShowAdjustmentSlider] = useState<boolean>(false);
   type ReorderableQuoteTask = QuoteTask & { tempDndId: string };
   const inputRef = useRef<HTMLInputElement>(null);
-  const customerNameInputRef = useRef<HTMLInputElement>(null);
   const quoteInputRef = useRef<HTMLInputElement>(null);
-  const totalPriceInputRef = useRef<HTMLInputElement>(null);
-  const [isEditingTotalPrice, setIsEditingTotalPrice] = useState<boolean>(false);
-  const [editingTotalPriceStr, setEditingTotalPriceStr] = useState<string>("");
   const [duplicatingTierId, setDuplicatingTierId] = useState<string | null>(null);
   const [isDuplicatePopoverOpen, setIsDuplicatePopoverOpen] = useState<boolean>(false);
   const [clearConfirmTierId, setClearConfirmTierId] = useState<string | null>(null);
-  const [confirmingDeleteAllQuotes, setConfirmingDeleteAllQuotes] = useState<boolean>(false);
-  const [isSelectingCustomer, setIsSelectingCustomer] = useState<boolean>(false);
-  const [customerSearchQuery, setCustomerSearchQuery] = useState('');
+  const [isSelectingCustomer, ] = useState<boolean>(false); // setIsSelectingCustomer is declared but its value is never read.
+  const [_customerSearchQuery, setCustomerSearchQuery] = useState(''); // Corrected: marked unused variable
   const [duplicateTargetTierIds, setDuplicateTargetTierIds] = useState<string[]>([]);
   const [duplicateNewTierCount, setDuplicateNewTierCount] = useState<number>(1);
-  const [confirmingDeleteAllTiers, setConfirmingDeleteAllTiers] = useState<boolean>(false);
+  const [confirmingDeleteAllTiers, setConfirmingDeleteAllTiers] = useState<boolean>(false); // Added back as it is used
   const [editingAllTasksTierId, setEditingAllTasksTierId] = useState<string | null>(null);
 
   const selectedTierId = currentQuote?.selectedTierId;
@@ -612,15 +1115,13 @@ export function CurrentQuoteSidebar({
   const baseQuoteNumber = customerQuotes[0]?.quoteNumber || "Q-ERR";
 
   useEffect(() => { if (editingTierId && inputRef.current) inputRef.current.focus(); }, [editingTierId]);
-  useEffect(() => { if (isEditingCustomer && customerNameInputRef.current) customerNameInputRef.current.focus(); }, [isEditingCustomer]);
-  useEffect(() => { if (customer && !isEditingCustomer) setEditableCustomer({ ...customer }); }, [customer, isEditingCustomer]);
   useEffect(() => { if (editingQuoteId && quoteInputRef.current) quoteInputRef.current.focus(); }, [editingQuoteId]);
   useEffect(() => { if (customer?.email && !isEditingSendEmail) setTempSendEmail(customer.email); if (customer?.phone && !isEditingSendSms) setTempSendSms(customer.phone); }, [customer, isEditingSendEmail, isEditingSendSms]);
   useEffect(() => { setInternalAvailableTiers(availableTiersProp); }, [availableTiersProp]);
   useEffect(() => { setClearConfirmTierId(null); }, [selectedTierId]);
   useEffect(() => { 
     if (!isQuoteDropdownOpen || currentQuoteId) {
-        setConfirmingDeleteAllQuotes(false);
+        setIsQuoteDropdownOpen(false);
     }
     // Reset tier delete confirmation when quote dropdown state changes
     setConfirmingDeleteAllTiers(false); 
@@ -661,14 +1162,6 @@ export function CurrentQuoteSidebar({
 
   const formatCurrency = (amount: number): string => new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(amount);
   const getTierName = (tierId?: string): string => internalAvailableTiers.find(t => t.id === tierId)?.name || (tierId ? `Tier ${tierId}` : "None");
-  const getStatusVariant = (status: Quote["status"]): "default" | "secondary" | "destructive" | "outline" => {
-    switch (status) {
-      case "Accepted": return "default";
-      case "Sent": return "outline";
-      case "Declined": case "Archived": return "destructive";
-      default: return "secondary";
-    }
-  };
 
   const handleTierClick = (tierId: string) => {
     if (!tierId || editingTierId === tierId || tierConfirmDeleteId === tierId || !currentQuote) return;
@@ -698,11 +1191,6 @@ export function CurrentQuoteSidebar({
     setTimeout(() => { setEditingTierId(null); setIsProcessingAction(false); }, 300);
   };
   const handleRenameKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => { if (event.key === 'Enter') handleSaveRename(); else if (event.key === 'Escape') handleCancelRename(); };
-  const handleTrashClick = (tierId: string) => {
-    console.log("handleTrashClick called for tier:", tierId);
-    setTierConfirmDeleteId(tierId);
-    setEditingTierId(null);
-  };
   const handleDeleteConfirmClick = (tierId: string) => {
     const index = internalAvailableTiers.findIndex(t => t.id === tierId);
     if (index === -1) return;
@@ -718,119 +1206,6 @@ export function CurrentQuoteSidebar({
     }, 300);
   };
 
-  const filteredCustomers = useMemo(() => {
-    const lowerCaseQuery = customerSearchQuery.toLowerCase().trim();
-    if (!lowerCaseQuery) {
-      return allCustomers;
-    }
-    return allCustomers.filter(customer => 
-      customer.name.toLowerCase().includes(lowerCaseQuery) ||
-      customer.email?.toLowerCase().includes(lowerCaseQuery) ||
-      customer.phone?.toLowerCase().includes(lowerCaseQuery) ||
-      customer.address?.toLowerCase().includes(lowerCaseQuery) 
-    );
-  }, [allCustomers, customerSearchQuery]);
-
-  const handleInlineCustomerSelect = (customerId: string) => {
-    onCustomerSelect(customerId);
-    setIsSelectingCustomer(false);
-  };
-
-  const handleStartEditCustomer = () => { 
-    setEditableCustomer({ ...customer }); 
-    setIsEditingCustomer(true); 
-    setIsSelectingCustomer(false);
-  };
-  const handleCancelEditCustomer = () => { 
-      setEditableCustomer({ ...customer });
-      setIsEditingCustomer(false); 
-  };
-
-  const handleSaveCustomer = () => { 
-      if (editableCustomer) { 
-          if (!editableCustomer.name.trim()) { 
-              alert("Customer name cannot be empty."); 
-              return; 
-          } 
-          onUpdateCustomer(editableCustomer); 
-          setIsEditingCustomer(false); 
-      } 
-  };
-
-  const handleCustomerInputChange = (event: React.ChangeEvent<HTMLInputElement>) => { const { name, value } = event.target; setEditableCustomer(prev => prev ? { ...prev, [name]: value } : null); };
-  const handleCustomerKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => { if (event.key === 'Enter') handleSaveCustomer(); else if (event.key === 'Escape') handleCancelEditCustomer(); };
-  const handleQuoteClick = (quoteId: string) => { 
-    if (!quoteId || editingQuoteId === quoteId || confirmingDeleteQuoteId === quoteId) return;
-    if (confirmingDeleteQuoteId !== null) setConfirmingDeleteQuoteId(null);
-    if (editingQuoteId !== null) setEditingQuoteId(null);
-    onQuoteSelect(quoteId);
-  };
-  const handleStartRenameQuote = (quoteToRename: Quote) => {
-    setEditingQuoteId(quoteToRename.id);
-    setEditingQuoteName(quoteToRename.name);
-    setConfirmingDeleteQuoteId(null);
-  };
-  const handleCancelRenameQuote = () => { setEditingQuoteId(null); setEditingQuoteName(""); };
-  const handleQuoteNameInputChange = (event: React.ChangeEvent<HTMLInputElement>) => { setEditingQuoteName(event.target.value); };
-  const handleFinishRenameQuote = () => { 
-    if (!editingQuoteId) { 
-        handleCancelRenameQuote();
-        return; 
-    }
-    
-    const quoteToRename = customerQuotes.find(q => q.id === editingQuoteId);
-    if (!quoteToRename) {
-        console.error("Could not find quote to rename:", editingQuoteId);
-        handleCancelRenameQuote();
-        return;
-    }
-
-    const trimmedName = editingQuoteName.trim();
-    let nameToSave: string;
-
-    if (trimmedName === "") {
-      nameToSave = quoteToRename.sequenceNumber.toString();
-    } else {
-      nameToSave = trimmedName;
-    }
-
-    if (nameToSave !== quoteToRename.name || trimmedName === "") { 
-      onRenameQuote(editingQuoteId, nameToSave);
-    }
-
-    handleCancelRenameQuote();
-  };
-  const handleQuoteRenameKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => { if (event.key === 'Enter') handleFinishRenameQuote(); else if (event.key === 'Escape') handleCancelRenameQuote(); };
-  const handleDeleteQuoteClick = (quoteId: string) => {
-    if (confirmingDeleteQuoteId === quoteId) {
-      onDeleteQuote(quoteId);
-      setConfirmingDeleteQuoteId(null);
-
-      if (currentQuote?.id === quoteId) { 
-          const remainingQuotes = customerQuotes.filter(q => q.id !== quoteId);
-          const nextQuote = remainingQuotes[0];
-          if (nextQuote) {
-              onQuoteSelect(nextQuote.id);
-          } else {
-              onQuoteSelect("");
-              console.log("Last quote deleted. No quotes remaining.");
-          }
-      }
-    } else {
-      setConfirmingDeleteQuoteId(quoteId);
-      setEditingQuoteId(null);
-    }
-  };
-  const handleStartEditTaskPrice = (index: number, currentPrice: number) => { setEditingTaskPriceIndex(index); setEditingTaskPriceStr(currentPrice.toString()); };
-  const handleCancelEditTaskPrice = () => { setEditingTaskPriceIndex(null); setEditingTaskPriceStr(""); };
-  const handleSaveTaskPrice = (index: number) => { 
-      const newPrice = parseFloat(editingTaskPriceStr); 
-      if (editingTaskPriceIndex === index && !isNaN(newPrice) && selectedTierId && currentQuote) { 
-          handleUpdateSingleTaskPrice(index, selectedTierId, newPrice); 
-      } 
-      handleCancelEditTaskPrice(); 
-  };
-  const handleTaskPriceKeyDown = (event: React.KeyboardEvent<HTMLInputElement>, index: number) => { if (event.key === 'Enter') handleSaveTaskPrice(index); else if (event.key === 'Escape') handleCancelEditTaskPrice(); };
   const handleOpenEditTaskDialog = useCallback((task: QuoteTask, index: number, tierId: string) => {
     setEditingTaskDetails({ task, index, tierId });
     setIsEditDialogOpen(true);
@@ -843,14 +1218,11 @@ export function CurrentQuoteSidebar({
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const handleTaskDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
+    const selectedTierId = currentQuote?.selectedTierId;
     if (selectedTierId && currentQuote && over && active.id !== over.id) {
       const oldIndex = reorderableTasks.findIndex(item => item.tempDndId === active.id);
       const newIndex = reorderableTasks.findIndex(item => item.tempDndId === over.id);
       if (oldIndex !== -1 && newIndex !== -1) {
-        // The UI will update when the parent state changes via onReorderTasks
-        // No need to set local state here anymore.
-        // const newOrder = arrayMove(reorderableTasks, oldIndex, newIndex);
-        // setReorderableTasks(newOrder); // <-- REMOVE THIS LINE
         onReorderTasks(selectedTierId, oldIndex, newIndex);
       }
     }
@@ -859,58 +1231,6 @@ export function CurrentQuoteSidebar({
     if (!currentQuote?.tierTasks?.[tierId]) return 0;
     return calculateQuoteTotalPriceFromTasks(currentQuote.tierTasks[tierId]);
   };
-  const calculateTierSumOfBasePrices = (tierId: string): number => {
-    if (!currentQuote?.tierTasks?.[tierId]) return 0;
-    return currentQuote.tierTasks[tierId].reduce((sum, task) => sum + task.basePrice, 0);
-  };
-  const handleStartEditTotalPrice = (): void => {
-    if (!currentQuote || showAdjustmentSlider) return;
-    setEditingTotalPriceStr(currentQuote.totalPrice.toFixed(2));
-    setIsEditingTotalPrice(true);
-  };
-  const handleCancelEditTotalPrice = (): void => { setIsEditingTotalPrice(false); setEditingTotalPriceStr(""); };
-  const handleSaveTotalPrice = (): void => {
-    if (!currentQuote) return;
-    const newTotalPrice = parseFloat(editingTotalPriceStr);
-    if (isNaN(newTotalPrice) || newTotalPrice < 0 || newTotalPrice === currentQuote.totalPrice) {
-      handleCancelEditTotalPrice();
-      return;
-    }
-    const currentSelectedTierId = currentQuote.selectedTierId;
-    if (!currentSelectedTierId) { handleCancelEditTotalPrice(); return; }
-    const currentTierTasks = currentQuote.tierTasks[currentSelectedTierId] || [];
-    if (!currentTierTasks || currentTierTasks.length === 0) {
-      handleCancelEditTotalPrice();
-      return;
-    }
-    const adjustmentResult = applyProportionalAdjustment(newTotalPrice, currentTierTasks, currentSelectedTierId);
-    if (!adjustmentResult) {
-      handleCancelEditTotalPrice();
-      return;
-    }
-    onUpdateAllTasks(currentSelectedTierId, adjustmentResult.updatedTasks);
-    setAdjustmentPercentage(0);
-    handleCancelEditTotalPrice();
-  };
-  const handleTotalPriceKeyDown = (event: React.KeyboardEvent<HTMLInputElement>): void => { if (event.key === 'Enter') handleSaveTotalPrice(); else if (event.key === 'Escape') handleCancelEditTotalPrice(); };
-  const handleUpdateSingleTaskPrice = (taskIndex: number, tierId: string, newBasePrice: number): void => {
-    if (!currentQuote) return;
-    const currentTierTasks = currentQuote.tierTasks[tierId];
-    if (!currentTierTasks || taskIndex < 0 || taskIndex >= currentTierTasks.length) return;
-    
-    onUpdateTaskPrice(taskIndex, tierId, newBasePrice);
-    setAdjustmentPercentage(0);
-  };
-  const handleStartDuplicate = (tierId: string, event: React.MouseEvent): void => {
-    console.log("handleStartDuplicate called for tier:", tierId);
-    event.stopPropagation(); 
-    setDuplicatingTierId(tierId);
-    setIsDuplicatePopoverOpen(true);
-    setEditingTierId(null);
-    setTierConfirmDeleteId(null);
-  };
-  const handleDuplicateToNew = (): void => { if (!duplicatingTierId || !currentQuote) return; const sourceTierName = getTierName(duplicatingTierId); let newTierName = `${sourceTierName} Copy`; let suffix = 1; while (internalAvailableTiers.some(t => t.name === newTierName)) { newTierName = `${sourceTierName} Copy ${++suffix}`; } onDuplicateTier(duplicatingTierId, null, newTierName); setIsDuplicatePopoverOpen(false); setDuplicatingTierId(null); };
-  const handleDuplicateToExisting = (destinationTierId: string): void => { if (!duplicatingTierId || !currentQuote || destinationTierId === duplicatingTierId) return; onDuplicateTier(duplicatingTierId, destinationTierId); setIsDuplicatePopoverOpen(false); setDuplicatingTierId(null); };
   const handleInitiateClearAllTasks = (tierId: string): void => { setClearConfirmTierId(tierId); setTierConfirmDeleteId(null); };
   const handleConfirmClearAllTasks = (tierId: string): void => {
     if (!currentQuote || clearConfirmTierId !== tierId) return;
@@ -919,32 +1239,9 @@ export function CurrentQuoteSidebar({
     setAdjustmentPercentage(0);
   };
 
-  const handleAddNewQuote = () => {
-    console.log("handleAddNewQuote called directly or from menu");
-    const currentSequenceNumbers = customerQuotes.map(q => q.sequenceNumber);
-    const nextSequenceNumber = currentSequenceNumbers.length > 0 ? Math.max(...currentSequenceNumbers) + 1 : 1;
-    console.log(` - Calling onAddQuote with Next Sequence #: ${nextSequenceNumber}`);
-    onAddQuote(nextSequenceNumber);
-  };
 
-  const handleInitiateDeleteAll = (event: Event) => {
-      event.preventDefault();
-      setConfirmingDeleteAllQuotes(true);
-  };
 
-  const handleConfirmDeleteAll = (event: Event) => {
-      event.preventDefault();
-      if (customer) {
-          onDeleteAllQuotes(customer.id);
-      }
-      setConfirmingDeleteAllQuotes(false);
-      // setIsQuoteDropdownOpen(false); // Remove this line to keep dropdown open
-  };
 
-  const handleDuplicateQuoteClick = (quoteId: string): void => {
-    console.log("Duplicate quote clicked:", quoteId);
-    onDuplicateQuote(quoteId); 
-  };
 
   const handleConfirmDuplicate = (): void => {
     if (!duplicatingTierId || !currentQuote) return; // Guard against null ID
@@ -1008,293 +1305,31 @@ export function CurrentQuoteSidebar({
     // Call the main update task handler passed from PricebookPage
     onUpdateTask(taskIndex, tierId, updatedTask);
 
-  }, [currentQuote, onUpdateTask]); // Depend on currentQuote and the main update handler
+  }, [currentQuote, onUpdateTask]);
 
-  return (
-    <div className="flex flex-col h-full border-l bg-background">
-      <div className="p-4 border-b flex justify-between items-center flex-shrink-0">
-        <h2 className="text-lg font-semibold">Quote Details</h2>
-      </div>
+  // === Delete Task Handler (passed to QuoteTasksList) ===
+  const handleDeleteTask = useCallback((taskIndex: number, tierId: string) => {
+    // Ensure the onDeleteTask prop is called with the correct arguments
+    onDeleteTask(taskIndex, tierId);
+  }, [onDeleteTask]); // Dependency: The onDeleteTask prop from the parent
 
-      <ScrollArea className="flex-grow">
-        <div className="p-4 pr-6 space-y-6 min-w-0 overflow-hidden">
-          {/* Customer Section */}
-          <section className="px-4">
-            <h3 className="text-sm font-semibold mb-2 flex items-center">
-              <User className="h-4 w-4 mr-2" /> 
-              Customer
-              <div className="ml-auto flex items-center gap-1">
-                {isEditingCustomer ? (
-                  <>
-                    <Button variant="ghost" size="icon" className="h-6 w-6 text-primary" onClick={handleSaveCustomer} title="Save Customer"><Check className="h-4 w-4" /></Button>
-                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleCancelEditCustomer} title="Cancel Edit"><CancelIcon className="h-4 w-4" /></Button>
-                  </>
-                ) : isSelectingCustomer ? (
-                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setIsSelectingCustomer(false)} title="Cancel Selection"><CancelIcon className="h-4 w-4" /></Button>
-                ) : (
-                  <>
-                    <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={() => setIsSelectingCustomer(true)} title="Select Customer">
-                        <Users className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={handleStartEditCustomer} title="Edit Customer Details">
-                        <Pencil className="h-4 w-4" />
-                    </Button>
-                  </>
-                )}
-              </div>
-            </h3>
-            <div className="text-xs bg-muted p-3 rounded-md">
-              {isSelectingCustomer ? (
-                <div className="space-y-2">
-                   <Input 
-                      placeholder="Search customers..."
-                      value={customerSearchQuery}
-                      onChange={(e) => setCustomerSearchQuery(e.target.value)}
-                      className="h-8 text-xs"
-                      autoFocus
-                   />
-                   <ScrollArea className="h-[150px] border rounded-md">
-                     <div className="p-1">
-                       {filteredCustomers.length > 0 ? (
-                         filteredCustomers.map(cust => (
-                           <div 
-                             key={cust.id}
-                             onClick={() => handleInlineCustomerSelect(cust.id)}
-                             className={`flex flex-col p-2 hover:bg-accent hover:text-accent-foreground rounded-sm cursor-pointer transition-colors duration-150 text-xs ${cust.id === customer.id ? 'bg-accent/50 font-medium' : ''}`}
-                           >
-                             <p className="font-semibold text-xs mb-0.5 truncate">{cust.name}</p>
-                             <div className="flex items-center text-[11px] text-muted-foreground truncate">
-                               <Mail className="h-2.5 w-2.5 mr-1 shrink-0"/>
-                               <span>{cust.email || 'N/A'}</span>
-                             </div>
-                             <div className="flex items-center text-[11px] text-muted-foreground truncate">
-                               <Phone className="h-2.5 w-2.5 mr-1 shrink-0"/>
-                               <span>{cust.phone || 'N/A'}</span>
-                             </div>
-                           </div>
-                         ))
-                       ) : (
-                         <p className="text-xs text-muted-foreground text-center p-4">No customers found.</p>
-                       )}
-                     </div>
-                   </ScrollArea>
-                 </div>
-              ) : isEditingCustomer && editableCustomer ? (
-                 <>
-                  <div className="flex items-center h-6 mb-1"> 
-                    <Label htmlFor="customerName" className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased">Name</Label>
-                    <Input 
-                      ref={customerNameInputRef} 
-                      id="customerName" 
-                      name="name" 
-                      value={editableCustomer.name} 
-                      onChange={handleCustomerInputChange} 
-                      onKeyDown={handleCustomerKeyDown} 
-                      className="p-0 h-full font-sans text-foreground antialiased flex-grow bg-transparent border-0 shadow-none focus-visible:ring-0 rounded-none"
-                      style={{ fontSize: '0.75rem', lineHeight: '1.25' }} /> 
-                  </div>
-                  <div className="flex items-center h-6 mb-1"> 
-                    <Label htmlFor="customerEmail" className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased">Email</Label>
-                    <Input 
-                      id="customerEmail" 
-                      name="email" 
-                      type="email" 
-                      value={editableCustomer.email || ""} 
-                      onChange={handleCustomerInputChange} 
-                      onKeyDown={handleCustomerKeyDown} 
-                      className="p-0 h-full font-sans text-foreground antialiased flex-grow bg-transparent border-0 shadow-none focus-visible:ring-0 rounded-none"
-                      style={{ fontSize: '0.75rem', lineHeight: '1.25' }} /> 
-                  </div>
-                  <div className="flex items-center h-6 mb-1"> 
-                    <Label htmlFor="customerPhone" className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased">Phone</Label>
-                    <Input 
-                      id="customerPhone" 
-                      name="phone" 
-                      value={editableCustomer.phone || ""} 
-                      onChange={handleCustomerInputChange} 
-                      onKeyDown={handleCustomerKeyDown} 
-                      className="p-0 h-full font-sans text-foreground antialiased flex-grow bg-transparent border-0 shadow-none focus-visible:ring-0 rounded-none"
-                      style={{ fontSize: '0.75rem', lineHeight: '1.25' }} /> 
-                  </div>
-                  <div className="flex items-start h-auto mb-0"> 
-                    <Label htmlFor="customerAddress" className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased pt-px">Address</Label>
-                    <textarea 
-                      id="customerAddress" 
-                      name="address" 
-                      value={editableCustomer.address || ""} 
-                      onChange={(e) => handleCustomerInputChange(e as any)} 
-                      onKeyDown={(e) => handleCustomerKeyDown(e as any)} 
-                      rows={1} 
-                      className="p-0 font-sans text-foreground antialiased flex-grow bg-transparent border-0 shadow-none focus-visible:ring-0 rounded-none resize-none overflow-hidden min-h-[24px]"
-                      style={{ fontSize: '0.75rem', lineHeight: '1.25' }} />
-                  </div>
-                 </>
-              ) : (
-                 <>
-                  <div className="flex items-center h-6 mb-1"> 
-                    <span className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased">Name</span> 
-                    <span className="text-xs font-sans text-foreground antialiased flex-grow truncate" style={{ lineHeight: '1.25' }}>{customer.name}</span>
-                  </div>
-                  <div className="flex items-center h-6 mb-1"> 
-                    <span className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased">Email</span> 
-                    <span className="text-xs font-sans text-foreground antialiased flex-grow truncate" style={{ lineHeight: '1.25' }}>{customer.email || <span className="text-muted-foreground italic">N/A</span>}</span>
-                  </div>
-                  <div className="flex items-center h-6 mb-1"> 
-                    <span className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased">Phone</span> 
-                    <span className="text-xs font-sans text-foreground antialiased flex-grow truncate" style={{ lineHeight: '1.25' }}>{customer.phone || <span className="text-muted-foreground italic">N/A</span>}</span>
-                  </div>
-                  <div className="flex items-start h-auto mb-0"> 
-                    <span className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased pt-px">Address</span>
-                    <span className="text-xs font-sans text-foreground antialiased flex-grow break-words whitespace-normal min-h-[24px]" style={{ lineHeight: '1.25' }}>{customer.address || <span className="text-muted-foreground italic">N/A</span>}</span>
-                  </div>
-                 </>
-              )}
-            </div>
-          </section>
+  // === Render ===
+  // Derive selectedTierId with fallback
+  // const selectedTierId = currentQuote?.selectedTierId || null;
 
-          {/* Quote Dropdown Section */}
-          <section className="/*px-4*/">
-            <Label className="text-xs text-muted-foreground block mb-1">Current Quote</Label>
-            <DropdownMenu 
-              open={isQuoteDropdownOpen} 
-              onOpenChange={(open) => {
-                  // Only allow manual opening if a quote is selected
-                  if (currentQuote) {
-                      setIsQuoteDropdownOpen(open);
-                  }
-              }}
-              modal={false}
-            >
-              <DropdownMenuTrigger asChild>
-                <Button 
-                  variant="outline" 
-                  className="w-full h-8 text-sm justify-between font-regular" 
-                  onClick={(e) => {
-                      if (!currentQuote) {
-                          e.preventDefault(); // Stop dropdown opening
-                          handleAddNewQuote(); // Call add directly
-                      }
-                      // Otherwise, let default trigger behavior happen (opens dropdown)
-                  }}
-                >
-                  <span>
-                    {currentQuote ? (
-                      <>
-                        {baseQuoteNumber} / {currentQuote.sequenceNumber}
-                        {currentQuote.name !== currentQuote.sequenceNumber.toString() && ` - ${currentQuote.name}`}
-                      </>
-                    ) : (
-                      <span>Create new quote</span> 
-                    )}
-                  </span>
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuPortal>
-                <DropdownMenuContent 
-                  align="start" 
-                  sideOffset={4} 
-                  className="w-[--radix-dropdown-menu-trigger-width]"
-                  // Prevent closing if clicking inside while renaming/confirming
-                  onCloseAutoFocus={(e) => {
-                      if (editingQuoteId || confirmingDeleteQuoteId) {
-                          e.preventDefault();
-                      }
-                  }}
-                >
-                  {customerQuotes.length > 0 ? (
-                    customerQuotes
-                      .sort((a, b) => a.sequenceNumber - b.sequenceNumber)
-                      .map((q) => (
-                        <div 
-                          key={q.id} 
-                          onClick={() => {
-                            if (editingQuoteId !== q.id && confirmingDeleteQuoteId !== q.id) {
-                                onQuoteSelect(q.id); 
-                                setIsQuoteDropdownOpen(false);
-                            }
-                          }}
-                          className={`group flex justify-between items-center text-xs px-2 py-2 cursor-pointer rounded-sm outline-none focus:bg-accent focus:text-accent-foreground hover:bg-accent hover:text-accent-foreground ${q.id === currentQuote?.id ? 'bg-accent' : ''} ${editingQuoteId === q.id ? 'bg-muted' : ''} ${confirmingDeleteQuoteId === q.id ? 'bg-destructive/10' : ''}`}
-                        >
-                          <div className="flex-grow flex items-center gap-2 mr-2 overflow-hidden min-w-0">
-                            {editingQuoteId === q.id ? (
-                              <div className="flex-grow flex items-center gap-1">
-                                <Input
-                                  ref={quoteInputRef}
-                                  type="text"
-                                  value={editingQuoteName}
-                                  onChange={handleQuoteNameInputChange}
-                                  onKeyDown={handleQuoteRenameKeyDown}
-                                  onBlur={handleFinishRenameQuote}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="h-6 text-xs flex-grow"
-                                />
-                                <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={(e) => { e.stopPropagation(); handleFinishRenameQuote(); }} title="Save Name"><Check className="h-3 w-3 text-primary" /></Button>
-                                <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={(e) => { e.stopPropagation(); handleCancelRenameQuote(); }} title="Cancel Rename"><CancelIcon className="h-3 w-3" /></Button>
-                              </div>
-                            ) : (
-                              <span
-                                className="flex-grow truncate cursor-default"
-                                title={(typeof q.sequenceNumber === 'number' && q.name === q.sequenceNumber.toString()) 
-                                  ? `${baseQuoteNumber} / ${q.sequenceNumber}` 
-                                  : `${baseQuoteNumber} / ${q.sequenceNumber ?? 'N/A'} - ${q.name} (${q.status})`}
-                              >
-                                {baseQuoteNumber} / {q.sequenceNumber ?? 'N/A'} {/* Display N/A if missing */}
-                                {(typeof q.sequenceNumber === 'number' && q.name !== q.sequenceNumber.toString()) && ` - ${q.name}`}
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center shrink-0">
-                            {confirmingDeleteQuoteId === q.id ? (
-                              <div className="flex items-center">
-                                <Button variant="destructive" size="sm" className="h-6 text-xs px-2 mr-1" onClick={(e) => { e.stopPropagation(); handleDeleteQuoteClick(q.id); }} title="Confirm Delete">Confirm?</Button>
-                                <Button variant="ghost" size="icon" className="h-5 w-5" onClick={(e) => { e.stopPropagation(); setConfirmingDeleteQuoteId(null); }} title="Cancel Delete"><CancelIcon className="h-3 w-3"/></Button>
-                              </div>
-                            ) : editingQuoteId === q.id ? (
-                                null
-                            ) : (
-                              <div className={`flex items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity`}>
-                                <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={(e) => { e.stopPropagation(); handleStartRenameQuote(q); }} title={`Rename Quote ${q.sequenceNumber}`} disabled={editingQuoteId !== null || confirmingDeleteQuoteId !== null}><Pencil className="h-4 w-4" /></Button>
-                                <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={(e) => { e.stopPropagation(); handleDuplicateQuoteClick(q.id); }} title={`Duplicate Quote ${q.sequenceNumber}`} disabled={editingQuoteId !== null || confirmingDeleteQuoteId !== null}><Copy className="h-4 w-4" /></Button>
-                                <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:bg-destructive/10" onClick={(e) => { e.stopPropagation(); setConfirmingDeleteQuoteId(q.id); }} title={`Delete Quote ${q.sequenceNumber}`} disabled={editingQuoteId !== null || confirmingDeleteQuoteId !== null}><Trash2 className="h-4 w-4" /></Button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))
-                  ) : (
-                    <DropdownMenuItem disabled className="text-xs text-muted-foreground italic justify-center">No quotes for this customer.</DropdownMenuItem>
-                  )}
-                  <DropdownMenuSeparator className="my-1" />
-                  <DropdownMenuItem 
-                    onSelect={(e) => { e.preventDefault(); handleAddNewQuote(); }}
-                    className="text-xs text-muted-foreground italic cursor-pointer flex items-center"
-                  >
-                     <PlusCircle className="h-4 w-4 mr-2" /> Add New Quote...
-                  </DropdownMenuItem>
-                  {customerQuotes.length > 1 && (
-                      <>
-                        <DropdownMenuSeparator className="my-1" />
-                        <DropdownMenuItem 
-                          onSelect={confirmingDeleteAllQuotes ? handleConfirmDeleteAll : handleInitiateDeleteAll}
-                          className="text-xs text-destructive focus:bg-destructive focus:text-destructive-foreground cursor-pointer flex items-center"
-                        >
-                          <Trash className="h-4 w-4 mr-2" /> 
-                          {confirmingDeleteAllQuotes ? "Confirm Delete All?" : "Delete All Quotes..."}
-                        </DropdownMenuItem>
-                      </>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenuPortal>
-            </DropdownMenu>
-          </section>
+  // Duplicate popover button click handler
+  const handleDuplicateButtonClick = useCallback((e: React.MouseEvent, tierId: string) => {
+    e.stopPropagation(); // Prevent event bubbling
+    setDuplicatingTierId(tierId); // Set the target tier ID
+    setIsDuplicatePopoverOpen(true); // Explicitly open the popover
+    setDuplicateTargetTierIds([]); // Reset duplication state defined at top level
+    setDuplicateNewTierCount(1); // Reset duplication state defined at top level
+  }, []);
 
-          {/* Tier Dropdown Section */}
-          <section className="/*px-4*/">
-             <Label className="text-xs text-muted-foreground block mb-1">Selected Tier</Label>
-             <DropdownMenu 
-                open={isTierDropdownOpen} 
-                onOpenChange={(open) => {
+  // Duplicate popover label click handler to prevent propagation
+
+  // Handle dropdown tier tier open/close
+  const handleTierDropdownOpenChange = useCallback((open: boolean) => {
                     // Prevent closing the dropdown if EITHER popover is open
                     if (!open && isDuplicatePopoverOpen) { 
                       return; // Do nothing, keep dropdown open
@@ -1304,16 +1339,94 @@ export function CurrentQuoteSidebar({
                       setIsTierDropdownOpen(open);
                       // If we are closing the main dropdown, ensure other states are reset
                       if (!open) {
-                        //setIsDeleteConfirmPopoverOpen(false); // This line is removed
                         setTierConfirmDeleteId(null);
                         setEditingTierId(null); // Also cancel renaming
-                        // Reset popover state ONLY if dropdown closes naturally
                         setIsDuplicatePopoverOpen(false); 
                         setDuplicatingTierId(null);
                         setConfirmingDeleteAllTiers(false); // Reset delete all confirmation
                       }
                     } 
-                }}
+  }, [currentQuote, isDuplicatePopoverOpen]);
+
+  // Handle popover open/close
+  const handlePopoverOpenChange = useCallback((open: boolean) => {
+    // Only manage popover state. Reset ID only on explicit close.
+    setIsDuplicatePopoverOpen(open);
+    if (!open) {
+      setDuplicatingTierId(null);
+    }
+  }, []);
+
+  // Handle duplicate popover confirm button
+  const handleDuplicateConfirmClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent event bubbling
+    handleConfirmDuplicate(); // Call the component handler
+  }, [handleConfirmDuplicate]);
+
+  // Handle popover outside interaction
+  const handlePopoverOutsideInteraction = useCallback((e: Event) => {
+    // Allow interacting with other dropdown items without closing popover/dropdown
+    const target = e.target as HTMLElement;
+    if (target.closest('[role="menuitem"]') || target.closest('[role="menu"]')) {
+      e.preventDefault(); 
+    } else {
+      // Otherwise, close the popover normally
+      setIsDuplicatePopoverOpen(false);
+      setDuplicatingTierId(null);
+    }
+  }, []);
+
+  // Handle delete tier button click
+  const handleDeleteTierButtonClick = useCallback((e: React.MouseEvent, tierId: string) => {
+    e.stopPropagation();
+    setTierConfirmDeleteId(tierId);
+  }, []);
+
+  // Handle dropdown menu close auto focus
+  const handleDropdownCloseAutoFocus = useCallback((e: Event) => {
+    // Prevent focus-related close if editing/confirming delete, a popover is open, or confirming delete all
+    if (editingTierId || tierConfirmDeleteId || isDuplicatePopoverOpen || confirmingDeleteAllTiers) {
+      e.preventDefault();
+    }
+  }, [editingTierId, tierConfirmDeleteId, isDuplicatePopoverOpen, confirmingDeleteAllTiers]);
+
+  return (
+    <div className="flex flex-col h-full border-l bg-background">
+      <div className="p-4 border-b flex justify-between items-center flex-shrink-0">
+        <h2 className="text-lg font-semibold">Quote Details</h2>
+      </div>
+
+      <ScrollArea className="flex-grow">
+        <div className="p-4 pr-6 space-y-6 min-w-0 overflow-hidden">
+          {/* Customer Section - Replaced with new component */}
+          <CustomerDetailsSection 
+            customer={customer}
+            allCustomers={allCustomers}
+            onUpdateCustomer={onUpdateCustomer}
+            onCustomerSelect={onCustomerSelect}
+          />
+
+          {/* Quote Dropdown Section - Replaced with new component */}
+          <QuoteDropdownSection 
+            customerQuotes={customerQuotes}
+            currentQuote={currentQuote}
+            baseQuoteNumber={baseQuoteNumber}
+            customer={customer}
+            onQuoteSelect={onQuoteSelect}
+            onAddQuote={onAddQuote}
+            onRenameQuote={onRenameQuote}
+            onDeleteQuote={onDeleteQuote}
+            onDuplicateQuote={onDuplicateQuote}
+            onDeleteAllQuotes={onDeleteAllQuotes}
+            formatCurrency={formatCurrency}
+          />
+
+          {/* Tier Dropdown Section */}
+          <section className="/*px-4*/">
+             <Label className="text-xs text-muted-foreground block mb-1">Selected Tier</Label>
+             <DropdownMenu 
+                open={isTierDropdownOpen} 
+                onOpenChange={handleTierDropdownOpenChange} 
                 modal={false}
              >
                  <DropdownMenuTrigger asChild>
@@ -1333,12 +1446,7 @@ export function CurrentQuoteSidebar({
                       align="start" 
                       sideOffset={4} 
                       className="w-[--radix-dropdown-menu-trigger-width]"
-                      onCloseAutoFocus={(e) => {
-                          // Prevent focus-related close if editing/confirming delete, a popover is open, or confirming delete all
-                          if (editingTierId || tierConfirmDeleteId || isDuplicatePopoverOpen || confirmingDeleteAllTiers) { // Added confirmingDeleteAllTiers
-                              e.preventDefault();
-                          }
-                      }}
+                      onCloseAutoFocus={handleDropdownCloseAutoFocus}
                     >
                        {sortedAvailableTiers.map((tier) => (
                            <div 
@@ -1375,26 +1483,14 @@ export function CurrentQuoteSidebar({
                                            <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={(e) => { e.stopPropagation(); handleStartRename(tier); }} title={`Rename ${tier.name}`} disabled={editingTierId !== null || tierConfirmDeleteId !== null || isDuplicatePopoverOpen}><Pencil className="h-4 w-4" /></Button>
                                            <Popover 
                                              open={isDuplicatePopoverOpen && duplicatingTierId === tier.id} // Correct condition
-                                             onOpenChange={(open) => {
-                                                // Only manage popover state. Reset ID only on explicit close.
-                                                setIsDuplicatePopoverOpen(open);
-                                                if (!open) {
-                                                  setDuplicatingTierId(null);
-                                                }
-                                            }}
+                                             onOpenChange={handlePopoverOpenChange}
                                             >
                                               <PopoverTrigger asChild>
                                                 <Button 
                                                   variant="ghost" 
                                                   size="icon" 
                                                   className="h-6 w-6 text-muted-foreground hover:text-foreground" 
-                                                  onClick={(e: React.MouseEvent) => { 
-                                                    e.stopPropagation(); // Prevent event bubbling
-                                                    setDuplicatingTierId(tier.id); // Set the target tier ID
-                                                    setIsDuplicatePopoverOpen(true); // Explicitly open the popover
-                                                    setDuplicateTargetTierIds([]); // Reset duplication state defined at top level
-                                                    setDuplicateNewTierCount(1); // Reset duplication state defined at top level
-                                                  }} 
+                                                  onClick={(e) => handleDuplicateButtonClick(e, tier.id)} 
                                                   title={`Duplicate ${tier.name}`} 
                                                   disabled={isProcessingAction || editingTierId !== null || tierConfirmDeleteId !== null}
                                                 >
@@ -1406,17 +1502,7 @@ export function CurrentQuoteSidebar({
                                                 side="right" 
                                                 align="start" 
                                                 // Prevent closing dropdown when interacting outside popover
-                                                onInteractOutside={(e) => {
-                                                    // Allow interacting with other dropdown items without closing popover/dropdown
-                                                    const target = e.target as HTMLElement;
-                                                    if (target.closest('[role=\"menuitem\"]') || target.closest('[role=\"menu\"]')) {
-                                                        e.preventDefault(); 
-                                                    } else {
-                                                      // Otherwise, close the popover normally
-                                                      setIsDuplicatePopoverOpen(false);
-                                                      setDuplicatingTierId(null);
-                                                    }
-                                                }}
+                                                onInteractOutside={handlePopoverOutsideInteraction}
                                                >
                                                   <div className="space-y-2 text-xs">
                                                       <div className="font-semibold text-center mb-2 border-b pb-1">Duplicate '{duplicatingTierId ? getTierName(duplicatingTierId) : ''}</div>
@@ -1469,18 +1555,16 @@ export function CurrentQuoteSidebar({
                                                       {/* Confirmation Button */}
                                                       <Button 
                                                         className="w-full h-8 text-xs mt-2" 
-                                                        onClick={(e) => { 
-                                                          e.stopPropagation(); // Prevent event bubbling
-                                                          handleConfirmDuplicate(); // Call the component handler
-                                                        }} 
+                                                        onClick={handleDuplicateConfirmClick} 
                                                         disabled={duplicateNewTierCount === 0 && duplicateTargetTierIds.length === 0}
                                                       >
-                                                        Create Duplicate
+                                                        {/* Adjusted button text */}
+                                                        Duplicate ({duplicateNewTierCount + duplicateTargetTierIds.length})
                                                       </Button>
                                                   </div>
                                               </PopoverContent>
                                            </Popover>
-                                           <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:bg-destructive/10" onClick={(e) => { e.stopPropagation(); setTierConfirmDeleteId(tier.id); }} title={`Delete ${tier.name}`} disabled={editingTierId !== null || tierConfirmDeleteId !== null || internalAvailableTiers.length <= 1 || isDuplicatePopoverOpen}><Trash2 className="h-4 w-4" /></Button>
+                                           <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:bg-destructive/10" onClick={(e) => handleDeleteTierButtonClick(e, tier.id)} title={`Delete ${tier.name}`} disabled={editingTierId !== null || tierConfirmDeleteId !== null || internalAvailableTiers.length <= 1 || isDuplicatePopoverOpen}><Trash2 className="h-4 w-4" /></Button>
                                        </div>
                                    )}
                                </div>
@@ -1488,7 +1572,7 @@ export function CurrentQuoteSidebar({
                        ))}
                        <DropdownMenuSeparator className="my-1" />
                        <DropdownMenuItem 
-                         onSelect={(e) => { e.preventDefault(); onAddTier(); /* Dropdown remains open due to preventDefault */ }}
+                         onSelect={(e: Event) => { e.preventDefault(); onAddTier(); /* Dropdown remains open due to preventDefault */ }}
                          className="text-xs text-muted-foreground italic cursor-pointer flex items-center"
                        >
                           <PlusCircle className="h-4 w-4 mr-2" /> Add New Tier...
@@ -1497,7 +1581,7 @@ export function CurrentQuoteSidebar({
                             <>
                               <DropdownMenuSeparator className="my-1" />
                               <DropdownMenuItem 
-                                onSelect={(e) => {
+                                onSelect={(e: Event) => {
                                   e.preventDefault(); // Always prevent default to control flow
                                   if (confirmingDeleteAllTiers) {
                                     onDeleteAllTiers(); // Call the actual deletion function
@@ -1527,7 +1611,7 @@ export function CurrentQuoteSidebar({
 
           <hr className="my-3 border-border/50" />
 
-          {/* Tasks Section */}
+          {/* Tasks Section - Replaced with QuoteTasksList */}
           <section className="/*px-4*/ pt-0">
             <div className="flex justify-between items-center mb-2">
               <h3 className="text-sm font-semibold flex items-center"><List className="h-4 w-4 mr-2" /> Tasks</h3>
@@ -1540,106 +1624,39 @@ export function CurrentQuoteSidebar({
                 <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={handleOpenEditAllTasksDialog} title="Edit All Tasks" disabled={!currentQuote || reorderableTasks.length === 0}><Settings2 className="h-4 w-4"/></Button>
               </div>
             </div>
-            {currentQuote && selectedTierId ? (
-              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleTaskDragEnd}>
-                <SortableContext items={reorderableTasks.map(t => t.tempDndId)} strategy={verticalListSortingStrategy}>
-                  <div className="space-y-1"> {/* Reduced space slightly */} 
-                    {reorderableTasks.length > 0 ? (
-                      reorderableTasks.map((task, index) => (
-                        <SortableTaskItem
-                          key={task.tempDndId} // Use stable ID for key
-                          id={task.tempDndId}  // Use stable ID for dnd-kit
-                          task={task}
-                          index={index}
-                          tierId={selectedTierId}
-                          onDelete={() => { 
-                            if (selectedTierId) { 
-                              console.log(`[CurrentQuoteSidebar] onDelete triggered for task index: ${index}, tierId: ${selectedTierId}`);
-                              onDeleteTask(index, selectedTierId);
-                            } else {
-                              console.warn("[CurrentQuoteSidebar] onDelete ignored: No selectedTierId");
-                            }
-                          }}
-                          onEdit={() => handleOpenEditTaskDialog(task, index, selectedTierId)}
-                          // === Pass the new quantity update handler ===
-                          onUpdateQuantity={(newQuantity) => handleUpdateTaskQuantity(index, selectedTierId, newQuantity)}
-                        />
-                      ))
-                    ) : (
-                      <p className="text-sm text-muted-foreground text-center py-4">No tasks for this tier.</p>
-                    )}
-                  </div>
-                </SortableContext>
-              </DndContext>
+            {currentQuote && currentQuote.selectedTierId ? ( // Adjusted conditional check
+              <QuoteTasksList
+                tasks={reorderableTasks} 
+                selectedTierId={currentQuote.selectedTierId} // Pass guaranteed string
+                sensors={sensors}
+                onDragEnd={handleTaskDragEnd}
+                onDeleteTask={handleDeleteTask}
+                onEditTask={handleOpenEditTaskDialog}
+                onUpdateTaskQuantity={handleUpdateTaskQuantity}
+              />
             ) : (
               <p className="text-sm text-muted-foreground text-center py-4">{currentQuote ? "Select a tier to view tasks." : "Select a quote to view tasks."}</p>
             )}
           </section>
 
+          {/* Separator */}
           <Separator />
 
-          {/* Pricing Section */}
-          <section>
-            <h3 className="text-sm font-semibold mb-2 flex items-center"><DollarSign className="h-4 w-4 mr-2" /> Pricing</h3>
-            <div className="text-xs space-y-2 bg-muted p-3 rounded-md">
-              {currentQuote && selectedTierId ? (
-                <>
-                  <div className="flex justify-between">
-                    <span>Tier:</span><span className="font-semibold">{getTierName(selectedTierId)}</span>
-                  </div>
-                  <Separator className="my-4" />
-                  <div className="flex items-center justify-between space-x-2 mt-2">
-                    <Label htmlFor="adjustment-toggle" className="text-sm font-regular">Enable Price Adjustment</Label>
-                    <Switch id="adjustment-toggle" checked={showAdjustmentSlider} onCheckedChange={(checked: boolean) => { setShowAdjustmentSlider(checked); if (!checked) setAdjustmentPercentage(0); }} disabled={!currentQuote} />
-                  </div>
-                  {showAdjustmentSlider && (
-                    <div className="space-y-2 pt-2">
-                      <Label htmlFor="adjustment-slider" className="text-sm font-regular">Adjust Total: {adjustmentPercentage}%</Label>
-                      <Slider
-                        id="adjustment-slider" min={-100} max={100} step={1} value={[adjustmentPercentage]}
-                        onValueChange={(value: number[]) => setAdjustmentPercentage(value[0])}
-                        onValueCommit={(value: number[]) => {
-                          if (!currentQuote || !selectedTierId) return;
-                          const committedPercentage = value[0];
-                          const currentTierTotal = calculateTierTotalPrice(selectedTierId);
-                          const targetTotalPrice = currentTierTotal * (1 + committedPercentage / 100);
-                          const currentTasks = currentQuote.tierTasks[selectedTierId] || [];
-                          const adjustmentResult = applyProportionalAdjustment(targetTotalPrice, currentTasks, selectedTierId);
-                          if (adjustmentResult) {
-                            onUpdateAllTasks(selectedTierId, adjustmentResult.updatedTasks);
-                          } else {
-                            console.error("Slider adjustment failed.");
-                          }
-                        }}
-                        className="[&>span:first-child]:h-1"
-                        disabled={!currentQuote}
-                      />
-                      <div className="flex justify-between text-xs text-muted-foreground"><span>-100%</span><span>+100%</span></div>
-                    </div>
-                  )}
-                  {currentQuote.adjustments.length > 0 && (<div className="pt-1"><Label className="text-xs text-muted-foreground">Manual Adjustments:</Label><p className="text-xs italic">(Display not implemented)</p></div>)}
-                  <Separator className="my-2" />
-                  <div className="flex justify-between font-semibold text-sm pt-1">
-                    <span>Total:</span>
-                    {isEditingTotalPrice && currentQuote ? (
-                      <div className="flex items-center gap-1">
-                        <span className="font-regular text-xs mr-1">$</span>
-                        <Input ref={totalPriceInputRef} type="number" step="0.01" value={editingTotalPriceStr} onChange={(e) => setEditingTotalPriceStr(e.target.value)} onKeyDown={handleTotalPriceKeyDown} onBlur={handleSaveTotalPrice} className="h-6 text-sm w-24 font-semibold" disabled={!currentQuote} />
-                        <Button variant="ghost" size="icon" className="h-5 w-5" onClick={handleSaveTotalPrice} title="Save" disabled={!currentQuote}><Check className="h-3 w-3 text-primary"/></Button>
-                        <Button variant="ghost" size="icon" className="h-5 w-5" onClick={handleCancelEditTotalPrice} title="Cancel" disabled={!currentQuote}><CancelIcon className="h-3 w-3"/></Button>
-                      </div>
-                    ) : (
-                      <span className={`cursor-pointer hover:bg-secondary px-1 rounded ${!currentQuote ? 'cursor-not-allowed opacity-50' : ''}`} title={!currentQuote ? 'No quote selected' : showAdjustmentSlider ? 'Disable adjustment to edit total' : 'Click to edit total'} onClick={currentQuote && !showAdjustmentSlider ? handleStartEditTotalPrice : undefined}>
-                        {formatCurrency(currentQuote?.totalPrice ?? 0)}
-                      </span>
-                    )}
-                  </div>
-                </>
-              ) : (
-                <p className="text-sm text-muted-foreground text-center py-4">{currentQuote ? "Select a tier to view pricing." : "Select a quote to view pricing."}</p>
-              )}
-            </div>
-          </section>
+          {/* Pricing Section - Uses QuotePricingDetails */}
+          <QuotePricingDetails 
+             // Pass necessary props, including helper functions if needed
+             currentQuote={currentQuote}
+             selectedTierId={currentQuote?.selectedTierId || null} // Keep fallback here as component might handle null
+             getTierName={getTierName}
+             formatCurrency={formatCurrency}
+             showAdjustmentSlider={showAdjustmentSlider}
+             setShowAdjustmentSlider={setShowAdjustmentSlider}
+             adjustmentPercentage={adjustmentPercentage}
+             setAdjustmentPercentage={setAdjustmentPercentage}
+             onUpdateAllTasks={onUpdateAllTasks} // Pass the handler from props
+             calculateTierTotalPrice={calculateTierTotalPrice} // Pass the function
+             applyProportionalAdjustment={applyProportionalAdjustment} // Pass the function
+          />
         </div>
       </ScrollArea>
 
@@ -1651,7 +1668,7 @@ export function CurrentQuoteSidebar({
                     setIsEditingSendEmail(false); setIsEditingSendSms(false);
                     setTempSendEmail(customer?.email || ""); setTempSendSms(customer?.phone || "");
                     setDisabledEmailSendClicks(0); setDisabledSmsSendClicks(0);
-                    setShowEmailSelectWarning(false); setShowSmsSelectWarning(false);
+                    setIsEditingSendEmail(false); setIsEditingSendSms(false);
                     const initialSelection = customerQuotes.length === 1 ? [customerQuotes[0].id] : (customerQuotes.length > 1 ? [currentQuote.id] : []);
                     setQuotesToSendIds(initialSelection);
                 }
@@ -1692,7 +1709,7 @@ export function CurrentQuoteSidebar({
                 if ((e.target as HTMLElement).closest('button, input')) e.preventDefault();
                 else if (quotesToSendIds.length === 0) {
                   const newClickCount = disabledEmailSendClicks + 1; setDisabledEmailSendClicks(newClickCount);
-                  if (newClickCount > 2) { setShowEmailSelectWarning(true); setTimeout(() => setShowEmailSelectWarning(false), 2500); setDisabledEmailSendClicks(0); }
+                  if (newClickCount > 2) { setIsEditingSendEmail(true); setTimeout(() => setIsEditingSendEmail(false), 2500); setDisabledEmailSendClicks(0); }
                   e.preventDefault();
                 } else {
                   const finalEmail = isEditingSendEmail ? tempSendEmail : customer.email;
@@ -1708,7 +1725,7 @@ export function CurrentQuoteSidebar({
                       if (e.key === 'Enter') {
                         if (quotesToSendIds.length === 0) {
                           const newClickCount = disabledEmailSendClicks + 1; setDisabledEmailSendClicks(newClickCount);
-                          if (newClickCount > 2) { setShowEmailSelectWarning(true); setTimeout(() => setShowEmailSelectWarning(false), 2500); setDisabledEmailSendClicks(0); }
+                          if (newClickCount > 2) { setIsEditingSendEmail(true); setTimeout(() => setIsEditingSendEmail(false), 2500); setDisabledEmailSendClicks(0); }
                           e.preventDefault(); return;
                         }
                         console.log('Action: Send via Email to (Edited): ', tempSendEmail); setIsEditingSendEmail(false); setQuotesToSendIds([]);
@@ -1733,7 +1750,7 @@ export function CurrentQuoteSidebar({
                 if ((e.target as HTMLElement).closest('button, input')) e.preventDefault();
                 else if (quotesToSendIds.length === 0) {
                   const newClickCount = disabledSmsSendClicks + 1; setDisabledSmsSendClicks(newClickCount);
-                  if (newClickCount > 2) { setShowSmsSelectWarning(true); setTimeout(() => setShowSmsSelectWarning(false), 2500); setDisabledSmsSendClicks(0); }
+                  if (newClickCount > 2) { setIsEditingSendSms(true); setTimeout(() => setIsEditingSendSms(false), 2500); setDisabledSmsSendClicks(0); }
                   e.preventDefault();
                 } else {
                   const finalSms = isEditingSendSms ? tempSendSms : customer.phone;
@@ -1749,7 +1766,7 @@ export function CurrentQuoteSidebar({
                       if (e.key === 'Enter') {
                         if (quotesToSendIds.length === 0) {
                           const newClickCount = disabledSmsSendClicks + 1; setDisabledSmsSendClicks(newClickCount);
-                          if (newClickCount > 2) { setShowSmsSelectWarning(true); setTimeout(() => setShowSmsSelectWarning(false), 2500); setDisabledSmsSendClicks(0); }
+                          if (newClickCount > 2) { setIsEditingSendSms(true); setTimeout(() => setIsEditingSendSms(false), 2500); setDisabledSmsSendClicks(0); }
                           e.preventDefault(); return;
                         }
                         console.log('Action: Send via SMS to (Edited): ', tempSendSms); setIsEditingSendSms(false); setQuotesToSendIds([]);
@@ -1783,15 +1800,17 @@ export function CurrentQuoteSidebar({
           onUpdateTask={onUpdateTask}
         />
       )}
-      {isEditAllTasksDialogOpen && currentQuote && selectedTierId && (
+      {isEditAllTasksDialogOpen && currentQuote && selectedTierId && editingAllTasksTierId && ( // Added check for editingAllTasksTierId
         <EditAllTasksDialog
           isOpen={isEditAllTasksDialogOpen}
           onOpenChange={setIsEditAllTasksDialogOpen}
-          tierId={editingAllTasksTierId}
-          tierName={getTierName(editingAllTasksTierId || undefined)}
-          tasks={reorderableTasks}
-          onUpdateAllTasks={(updatedTasks: QuoteTask[]) => { // Add type
-            if(editingAllTasksTierId) onUpdateAllTasks(editingAllTasksTierId, updatedTasks);
+          tierId={editingAllTasksTierId} // Use state variable
+          tierName={getTierName(editingAllTasksTierId)} // Use state variable
+          tasks={reorderableTasks} // Pass current tasks for the selected tier
+          onUpdateAllTasks={(updatedTasks: QuoteTask[]) => { 
+            if(editingAllTasksTierId) { // Ensure ID is present
+                onUpdateAllTasks(editingAllTasksTierId, updatedTasks); // Use the correct tier ID
+            }
          }}
         />
       )}
