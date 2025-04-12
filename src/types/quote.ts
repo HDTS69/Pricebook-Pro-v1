@@ -15,6 +15,19 @@ export interface QuoteTask {
   basePrice: number;
   quantity?: number;
   addons?: Addon[];
+
+  // Added metadata fields
+  title?: string;
+  code?: string;
+  category?: string;
+  subcategory?: string;
+  subSubcategory?: string;
+  imageFile?: string;
+  configOption?: string;
+  priceInclGST?: number;
+  time?: number; // Assuming numerical value like hours
+  materials?: number; // Assuming numerical cost
+  tags?: string[]; // Added tags field
 }
 
 export interface Adjustment {

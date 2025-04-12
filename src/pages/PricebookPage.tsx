@@ -17,6 +17,8 @@ import {
   Menu,
   Search,
   ClipboardPlus,
+  Camera,
+  Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CategoryView } from '@/components/pricebook/CategoryView';
@@ -28,6 +30,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/Select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/Tooltip';
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 
 // --- NEW IMPORTS ---
 import { CurrentQuoteSidebar } from '@/components/pricebook/CurrentQuoteSidebar';
@@ -43,6 +48,7 @@ const DEFAULT_TIER: Tier = {
   warranty: "Standard",
   perks: [],
 };
+const CUSTOM_CATEGORY_NAME = "Custom Tasks"; // Define constant for custom category
 
 // --- Mock Data (Replace with actual data fetching/management later) ---
 const mockCustomers: Customer[] = [
@@ -135,14 +141,28 @@ const TIER_COLORS: string[] = [
   // Add more colors as needed
 ];
 
+// --- Updated Data Structure for Categories ---
+interface SubSubcategory {
+  id: string;
+  name: string;
+}
+
+interface Subcategory {
+  id: string;
+  name: string;
+  subSubcategories?: SubSubcategory[];
+}
+
 interface ServiceCategory {
   id: string;
   name: string;
   icon: React.ElementType;
   color: string;
   description: string;
+  subcategories?: Subcategory[]; // Optional subcategories
 }
 
+// Add some mock subcategories/sub-subcategories for demonstration
 const serviceCategories: ServiceCategory[] = [
   {
     id: 'favourites',
@@ -157,6 +177,10 @@ const serviceCategories: ServiceCategory[] = [
     icon: Wrench,
     color: 'text-blue-500',
     description: 'General service and maintenance tasks',
+    subcategories: [
+      { id: 'service-general', name: 'General Maintenance' },
+      { id: 'service-tuneup', name: 'System Tune-up' },
+    ]
   },
   {
     id: 'hot-water',
@@ -164,6 +188,18 @@ const serviceCategories: ServiceCategory[] = [
     icon: Droplet,
     color: 'text-red-500',
     description: 'Hot water system repairs and installations',
+    subcategories: [
+      { 
+        id: 'hw-electric', 
+        name: 'Electric Systems', 
+        subSubcategories: [
+          { id: 'hw-elec-replace', name: 'Replacement' },
+          { id: 'hw-elec-repair', name: 'Repair' },
+        ]
+      },
+      { id: 'hw-gas', name: 'Gas Systems' },
+      { id: 'hw-heatpump', name: 'Heat Pump' },
+    ]
   },
   {
     id: 'plumbing',
@@ -223,100 +259,504 @@ function AddCustomTaskDialog({
   onOpenChange, 
   availableTiers, 
   currentQuoteSelectedTierId,
-  onAddCustomTask 
-}: AddCustomTaskDialogProps) {
+  onAddCustomTask,
+  onSaveTaskToLibrary
+}: AddCustomTaskDialogProps & { onSaveTaskToLibrary: (task: QuoteTask, tierId: string) => void }) {
+  // --- Main Dialog State ---
   const [taskName, setTaskName] = useState("");
-  const [taskDesc, setTaskDesc] = useState("");
+  const [taskDesc, setTaskDesc] = useState(""); // Main Description
   const [taskPrice, setTaskPrice] = useState("");
   const [selectedTierId, setSelectedTierId] = useState<string>("");
+  const [isEnhancingName, setIsEnhancingName] = useState(false); // AI Loading state for Name
+  const [isGeneratingMainDesc, setIsGeneratingMainDesc] = useState(false); // State for main description AI
+  
+  // --- Popover State ---
+  const [isLibraryPopoverOpen, setIsLibraryPopoverOpen] = useState(false);
+  const [taskTitle, setTaskTitle] = useState("");
+  const [libraryTaskDesc, setLibraryTaskDesc] = useState(""); // Popover Description
+  const [taskCode, setTaskCode] = useState("");
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>("");
+  const [selectedSubcategoryId, setSelectedSubcategoryId] = useState<string>("");
+  const [selectedSubSubcategoryId, setSelectedSubSubcategoryId] = useState<string>("");
+  const [taskImageFile, setTaskImageFile] = useState(""); 
+  const [taskConfigOption, setTaskConfigOption] = useState("");
+  const [taskPriceInclGST, setTaskPriceInclGST] = useState("");
+  const [taskTime, setTaskTime] = useState("");
+  const [taskMaterials, setTaskMaterials] = useState("");
+  const [isEnhancingTitle, setIsEnhancingTitle] = useState(false); // AI Loading state for Title
+  const [isGeneratingDesc, setIsGeneratingDesc] = useState(false); // State for popover description AI
 
-  // Set default tier selection when dialog opens or available tiers/default changes
+  // --- Derived State for Dropdowns ---
+  const availableSubcategories = useMemo(() => {
+    const category = serviceCategories.find(c => c.id === selectedCategoryId);
+    return category?.subcategories || [];
+  }, [selectedCategoryId]);
+
+  const availableSubSubcategories = useMemo(() => {
+    const subcategory = availableSubcategories.find(sc => sc.id === selectedSubcategoryId);
+    return subcategory?.subSubcategories || [];
+  }, [selectedSubcategoryId, availableSubcategories]);
+
+  // --- Effects ---
+  // Reset all fields when dialog closes
   useEffect(() => {
-    if (isOpen) {
-        if (currentQuoteSelectedTierId && availableTiers.some(t => t.id === currentQuoteSelectedTierId)) {
-            setSelectedTierId(currentQuoteSelectedTierId);
-        } else if (availableTiers.length > 0) {
-            setSelectedTierId(availableTiers[0].id); // Fallback to first available tier
-        } else {
-            setSelectedTierId(""); // No tiers available
-        }
-    } else {
-        // Reset form when closing
+    if (!isOpen) {
         setTaskName("");
         setTaskDesc("");
         setTaskPrice("");
         setSelectedTierId("");
+        setIsLibraryPopoverOpen(false); 
+        setTaskTitle("");
+        setTaskCode("");
+        setSelectedCategoryId("");
+        setSelectedSubcategoryId("");
+        setSelectedSubSubcategoryId("");
+        setLibraryTaskDesc("");
+        setTaskImageFile("");
+        setTaskConfigOption("");
+        setTaskPriceInclGST("");
+        setTaskTime("");
+        setTaskMaterials("");
+        // Reset AI states too
+        setIsEnhancingName(false);
+        setIsGeneratingMainDesc(false);
+        setIsEnhancingTitle(false);
+        setIsGeneratingDesc(false);
     }
+  }, [isOpen]);
+
+  // Auto-populate popover fields when it opens
+  useEffect(() => {
+    if (isLibraryPopoverOpen) {
+      setTaskTitle(taskName);
+      setLibraryTaskDesc(taskDesc);
+      setTaskPriceInclGST(taskPrice); 
+      setSelectedCategoryId("");
+      setSelectedSubcategoryId("");
+      setSelectedSubSubcategoryId("");
+    } 
+  }, [isLibraryPopoverOpen, taskName, taskDesc, taskPrice]);
+
+  // Reset sub-selections when parent category changes
+  useEffect(() => {
+    setSelectedSubcategoryId("");
+    setSelectedSubSubcategoryId("");
+  }, [selectedCategoryId]);
+
+  useEffect(() => {
+    setSelectedSubSubcategoryId("");
+  }, [selectedSubcategoryId]);
+
+  // Set default tier on open
+  useEffect(() => {
+     if (isOpen) {
+        if (currentQuoteSelectedTierId && availableTiers.some(t => t.id === currentQuoteSelectedTierId)) {
+            setSelectedTierId(currentQuoteSelectedTierId);
+        } else if (availableTiers.length > 0) {
+            setSelectedTierId(availableTiers[0].id);
+        } else {
+            setSelectedTierId("");
+        }
+     }
   }, [isOpen, availableTiers, currentQuoteSelectedTierId]);
 
-  const handleSave = () => {
+  // --- AI Placeholder Handlers ---
+  const handleEnhanceName = useCallback(async () => {
+    if (!taskName.trim()) return;
+    setIsEnhancingName(true);
+    console.log("[AI Placeholder] Enhancing Name:", taskName);
+    await new Promise(resolve => setTimeout(resolve, 1000)); 
+    setTaskName(prev => `${prev} [AI Enhanced]`);
+    setIsEnhancingName(false);
+  }, [taskName]);
+
+  const handleGenerateMainDescription = useCallback(async () => {
+    const basis = taskName.trim(); 
+    if (!basis) {
+        console.warn("[AI Placeholder] Cannot generate main description without a name.");
+        return;
+    }
+    setIsGeneratingMainDesc(true);
+    console.log("[AI Placeholder] Generating Main Description based on:", basis);
+    await new Promise(resolve => setTimeout(resolve, 1000)); 
+    setTaskDesc(`AI description for "${basis}": Standard procedure includes setup, execution, and cleanup.`); // Set main description state
+    setIsGeneratingMainDesc(false);
+  }, [taskName]);
+
+  const handleEnhanceTitle = useCallback(async () => {
+    if (!taskTitle.trim()) return;
+    setIsEnhancingTitle(true);
+    console.log("[AI Placeholder] Enhancing Title:", taskTitle);
+    await new Promise(resolve => setTimeout(resolve, 1000)); 
+    setTaskTitle(prev => `${prev} [AI Enhanced]`);
+    setIsEnhancingTitle(false);
+  }, [taskTitle]);
+
+  const handleGenerateLibraryDescription = useCallback(async () => {
+    const basis = taskTitle.trim() || taskName.trim(); 
+    if (!basis) {
+        console.warn("[AI Placeholder] Cannot generate library description without a title or name.");
+        return;
+    }
+    setIsGeneratingDesc(true);
+    console.log("[AI Placeholder] Generating Library Description based on:", basis);
+    await new Promise(resolve => setTimeout(resolve, 1000)); 
+    setLibraryTaskDesc(`Detailed AI description for library task "${basis}": This involves meticulous planning, execution following best practices, use of premium materials (where applicable), and thorough post-job inspection.`);
+    setIsGeneratingDesc(false);
+  }, [taskTitle, taskName]);
+
+  // --- End AI Placeholder Handlers ---
+
+  // --- Handlers ---
+  const closeAndReset = () => {
+    onOpenChange(false); 
+  };
+
+  const handleAddTaskToQuote = () => {
     const priceValue = parseFloat(taskPrice);
     if (!taskName.trim() || isNaN(priceValue) || !selectedTierId) {
-      console.error("Invalid custom task input.");
-      // TODO: Better validation feedback
+      console.error("Invalid custom task input for quote.");
       return;
     }
-
     const newTask: QuoteTask = {
       taskId: `custom-${uuidv4()}`,
       name: taskName.trim(),
-      description: taskDesc.trim(),
+      description: taskDesc.trim(), 
       basePrice: priceValue,
       addons: [],
     };
-
     onAddCustomTask(newTask, selectedTierId);
-    onOpenChange(false);
+    closeAndReset();
+  };
+
+  // --- Main Save Handler (Restored and Placed Correctly) --- 
+  const handleSaveToLibraryAndQuote = () => {
+      const priceValue = taskPriceInclGST ? parseFloat(taskPriceInclGST) : NaN; 
+      const basePriceForQuote = parseFloat(taskPrice); 
+      const priceInclGSTValue = !isNaN(priceValue) ? priceValue : undefined;
+      const timeValue = taskTime ? parseFloat(taskTime) : undefined;
+      const materialsValue = taskMaterials ? parseFloat(taskMaterials) : undefined;
+
+      if (!taskTitle.trim() || isNaN(priceValue) || !selectedTierId) {
+         console.error("Invalid library task input. Title, Price Incl. GST, and Tier are required.");
+         return;
+      }
+       if (taskTime && isNaN(timeValue as number)) { return; }
+       if (taskMaterials && isNaN(materialsValue as number)) { return; }
+
+      let categoryName: string | undefined;
+      let subcategoryName: string | undefined;
+      let subSubcategoryName: string | undefined;
+      const tags: string[] = [CUSTOM_CATEGORY_NAME]; 
+
+      if (selectedCategoryId) {
+        categoryName = serviceCategories.find(c => c.id === selectedCategoryId)?.name;
+        if (categoryName) { tags.push(categoryName); }
+        if (selectedSubcategoryId) {
+          subcategoryName = availableSubcategories.find(sc => sc.id === selectedSubcategoryId)?.name;
+          if (subcategoryName) { tags.push(subcategoryName); }
+           if (selectedSubSubcategoryId) {
+              subSubcategoryName = availableSubSubcategories.find(ssc => ssc.id === selectedSubSubcategoryId)?.name;
+               if (subSubcategoryName) { tags.push(subSubcategoryName); }
+           }
+        }
+      } else {
+        categoryName = undefined; 
+        subcategoryName = undefined;
+        subSubcategoryName = undefined;
+      }
+
+      const libraryTaskData: QuoteTask = {
+        taskId: `library-${uuidv4()}`,
+        name: taskTitle.trim(), 
+        description: libraryTaskDesc.trim(), // Use popover description for library item
+        basePrice: !isNaN(basePriceForQuote) ? basePriceForQuote : 0, 
+        addons: [],
+        title: taskTitle.trim(), 
+        code: taskCode.trim() || undefined,
+        category: categoryName, 
+        subcategory: subcategoryName, 
+        subSubcategory: subSubcategoryName, 
+        tags: tags, 
+        imageFile: taskImageFile.trim() || undefined, 
+        configOption: taskConfigOption.trim() || undefined,
+        priceInclGST: priceInclGSTValue,
+        time: timeValue,
+        materials: materialsValue,
+      };
+
+      console.log("Saving task to library (with tags):", libraryTaskData);
+      onSaveTaskToLibrary(libraryTaskData, selectedTierId); 
+      // When saving to library, use the library data (incl. popover desc) to add to quote
+      onAddCustomTask(libraryTaskData, selectedTierId); 
+      closeAndReset(); 
+  };
+  // --- End Main Save Handler --- 
+
+  const handleImageButtonClick = () => {
+    console.log("Image Attach/Camera button clicked - implement file selection logic here.");
   };
 
   if (!isOpen) return null;
 
+  const basicFieldsValid = taskName.trim() && selectedTierId && !isNaN(parseFloat(taskPrice));
+  const libraryFieldsValid = taskTitle.trim() && selectedTierId && !isNaN(parseFloat(taskPriceInclGST));
+
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-xl grid-rows-[auto_minmax(0,1fr)_auto] p-0 max-h-[90vh]">
+        <DialogHeader className="p-6 pb-4"> 
           <DialogTitle>Add Custom Task</DialogTitle>
-          <DialogDescription>Enter the details for the custom task and select the target tier.</DialogDescription>
+          <DialogDescription>
+            Enter details below. You can add the task directly to the quote or save it to the library with more details for reuse.
+          </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
-          {/* Name, Description, Price inputs similar to EditServiceDialog */}
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="custom-task-name" className="text-right">Name*</Label>
-            <Input id="custom-task-name" value={taskName} onChange={(e) => setTaskName(e.target.value)} className="col-span-3" />
+        
+        <ScrollArea className="px-6 border-y overflow-y-auto">
+          <div className="grid gap-4 py-6">
+            {/* Name Input Group */}
+            {/* --- Basic Fields --- */}
+            <div className="grid grid-cols-4 items-center gap-x-4 gap-y-2">
+              <Label htmlFor="custom-task-name" className="text-right">Name*</Label>
+              <div className="col-span-3 flex items-center gap-1.5"> 
+                <Input 
+                  id="custom-task-name" 
+                  value={taskName} 
+                  onChange={(e) => setTaskName(e.target.value)} 
+                  className="flex-grow" 
+                />
+                <Button 
+                  type="button" 
+                  variant="ghost" 
+                  size="icon" 
+                  className="h-8 w-8 text-purple-500 hover:bg-purple-100 disabled:opacity-50" 
+                  onClick={handleEnhanceName} 
+                  disabled={!taskName.trim() || isEnhancingName}
+                  title="Enhance Name with AI"
+                >
+                  <Sparkles className={`h-4 w-4 ${isEnhancingName ? 'animate-pulse' : ''}`} />
+                </Button>
+              </div>
+            </div>
+            <div className="grid grid-cols-4 items-start gap-x-4 gap-y-2">
+              <Label htmlFor="custom-task-desc" className="text-right pt-2">Description</Label>
+              <div className="col-span-3 flex items-start gap-1.5"> 
+                 <Textarea 
+                    id="custom-task-desc" 
+                    value={taskDesc} 
+                    onChange={(e) => setTaskDesc(e.target.value)} 
+                    className="flex-grow" 
+                    rows={3} 
+                 />
+                 <Button 
+                  type="button" 
+                  variant="ghost" 
+                  size="icon" 
+                  className="h-8 w-8 text-purple-500 hover:bg-purple-100 disabled:opacity-50 mt-1.5" 
+                  onClick={handleGenerateMainDescription} 
+                  disabled={isGeneratingMainDesc || !taskName.trim()} // Disable if no name or processing
+                  title="Generate Description with AI (uses Name)"
+                 >
+                    <Sparkles className={`h-4 w-4 ${isGeneratingMainDesc ? 'animate-pulse' : ''}`} />
+                 </Button>
+              </div>
+            </div>
+            <div className="grid grid-cols-4 items-center gap-x-4 gap-y-2">
+              <Label htmlFor="custom-task-price" className="text-right">Base Price*</Label>
+              <Input id="custom-task-price" type="number" value={taskPrice} onChange={(e) => setTaskPrice(e.target.value)} className="col-span-3" step="0.01" />
+            </div>
+             {/* Target Tier Dropdown */}
+            <div className="grid grid-cols-4 items-center gap-x-4 gap-y-2">
+               <Label htmlFor="custom-task-tier" className="text-right">Target Tier*</Label>
+               <Select 
+                 value={selectedTierId} 
+                 onValueChange={setSelectedTierId} 
+                 disabled={availableTiers.length === 0}
+               >
+                 <SelectTrigger className="col-span-3">
+                   <SelectValue placeholder="Select a tier..." />
+                 </SelectTrigger>
+                 <SelectContent>
+                   {availableTiers.map(tier => (
+                     <SelectItem key={tier.id} value={tier.id}>{tier.name}</SelectItem>
+                   ))}
+                   {availableTiers.length === 0 && <SelectItem value="" disabled>No tiers available</SelectItem>}
+                 </SelectContent>
+               </Select>
+             </div>
           </div>
-          <div className="grid grid-cols-4 items-start gap-4">
-            <Label htmlFor="custom-task-desc" className="text-right pt-2">Description</Label>
-            <Textarea id="custom-task-desc" value={taskDesc} onChange={(e) => setTaskDesc(e.target.value)} className="col-span-3" rows={3} />
+        </ScrollArea>
+        
+        {/* --- Footer with Popover for Library --- */}
+        <DialogFooter className="gap-2 sm:justify-between p-6 pt-4 bg-muted/50 sm:bg-transparent">
+          <Button type="button" variant="outline" onClick={closeAndReset}>Cancel</Button>
+          <div className="flex gap-2">
+            <Button 
+              type="button" 
+              variant="secondary" 
+              onClick={handleAddTaskToQuote} 
+              disabled={!basicFieldsValid}
+              title="Add this task only to the current quote"
+            >
+              Add to Quote Only
+            </Button>
+            <Popover open={isLibraryPopoverOpen} onOpenChange={setIsLibraryPopoverOpen}>
+              <PopoverTrigger asChild>
+                <Button 
+                  type="button" 
+                  variant="default"
+                  disabled={!basicFieldsValid}
+                  title="Add details and save this task to the library for reuse"
+                >
+                  Add to Library...
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[450px] p-0" side="top" align="end">
+                <div className="p-4 border-b bg-muted/50">
+                   <h4 className="text-sm font-medium">Library Details</h4>
+                   <p className="text-xs text-muted-foreground">Fill in details to save this task for future use.</p>
+                </div>
+                <ScrollArea className="max-h-[50vh] p-4">
+                  <div className="grid gap-3">
+                     {/* --- Metadata Fields inside Popover --- */}
+                      <div className="grid grid-cols-4 items-center gap-x-4 gap-y-1">
+                        <Label htmlFor="library-task-title" className="text-right text-xs">Title*</Label>
+                        <div className="col-span-3 flex items-center gap-1.5"> 
+                          <Input id="library-task-title" value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} className="flex-grow h-8 text-xs" />
+                          <Button 
+                            type="button" 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-8 w-8 text-purple-500 hover:bg-purple-100 disabled:opacity-50" 
+                            onClick={handleEnhanceTitle} 
+                            disabled={!taskTitle.trim() || isEnhancingTitle}
+                            title="Enhance Title with AI"
+                          >
+                            <Sparkles className={`h-4 w-4 ${isEnhancingTitle ? 'animate-pulse' : ''}`} />
+                          </Button>
+                        </div>
+                      </div>
+                       <div className="grid grid-cols-4 items-start gap-x-4 gap-y-1">
+                         <Label htmlFor="library-task-desc" className="text-right text-xs pt-1.5">Description</Label>
+                         <div className="col-span-3 flex items-start gap-1.5"> 
+                           <Textarea 
+                             id="library-task-desc" 
+                             value={libraryTaskDesc} 
+                             onChange={(e) => setLibraryTaskDesc(e.target.value)} 
+                             className="flex-grow text-xs" 
+                             rows={2} 
+                           />
+                            <Button 
+                              type="button" 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-8 w-8 text-purple-500 hover:bg-purple-100 disabled:opacity-50 mt-1" 
+                              onClick={handleGenerateLibraryDescription} 
+                              disabled={isGeneratingDesc || (!taskTitle.trim() && !taskName.trim())} 
+                              title="Generate/Rewrite Description with AI"
+                            >
+                              <Sparkles className={`h-4 w-4 ${isGeneratingDesc ? 'animate-pulse' : ''}`} />
+                            </Button>
+                         </div>
+                       </div>
+                       <div className="grid grid-cols-4 items-center gap-x-4 gap-y-1">
+                         <Label htmlFor="library-task-gst" className="text-right text-xs">Price Incl. GST*</Label>
+                         <Input id="library-task-gst" type="number" value={taskPriceInclGST} onChange={(e) => setTaskPriceInclGST(e.target.value)} className="col-span-3 h-8 text-xs" step="0.01" />
+                       </div>
+                       
+                       <Separator className="my-2" />
+                       
+                       <div className="grid grid-cols-4 items-center gap-x-4 gap-y-1">
+                         <Label htmlFor="library-task-category" className="text-right text-xs">Category</Label>
+                         <Select value={selectedCategoryId} onValueChange={setSelectedCategoryId}>
+                           <SelectTrigger className="col-span-3 h-8 text-xs">
+                             <SelectValue placeholder="Select category..." />
+                           </SelectTrigger>
+                           <SelectContent>
+                             {serviceCategories.map(cat => (
+                               <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                             ))}
+                           </SelectContent>
+                         </Select>
+                       </div>
+                       
+                       {selectedCategoryId && availableSubcategories.length > 0 && (
+                           <div className="grid grid-cols-4 items-center gap-x-4 gap-y-1">
+                             <Label htmlFor="library-task-subcategory" className="text-right text-xs">Subcategory</Label>
+                             <Select value={selectedSubcategoryId} onValueChange={setSelectedSubcategoryId}>
+                               <SelectTrigger className="col-span-3 h-8 text-xs">
+                                 <SelectValue placeholder="Select subcategory..." />
+                               </SelectTrigger>
+                               <SelectContent>
+                                  {availableSubcategories.map(subcat => (
+                                    <SelectItem key={subcat.id} value={subcat.id}>{subcat.name}</SelectItem>
+                                  ))}
+                               </SelectContent>
+                             </Select>
+                           </div>
+                       )}
+                        
+                       {selectedSubcategoryId && availableSubSubcategories.length > 0 && (
+                           <div className="grid grid-cols-4 items-center gap-x-4 gap-y-1">
+                             <Label htmlFor="library-task-subsubcategory" className="text-right text-xs">Sub-Subcategory</Label>
+                             <Select value={selectedSubSubcategoryId} onValueChange={setSelectedSubSubcategoryId}>
+                               <SelectTrigger className="col-span-3 h-8 text-xs">
+                                 <SelectValue placeholder="Select sub-subcategory..." />
+                               </SelectTrigger>
+                               <SelectContent>
+                                  {availableSubSubcategories.map(subsubcat => (
+                                    <SelectItem key={subsubcat.id} value={subsubcat.id}>{subsubcat.name}</SelectItem>
+                                  ))}
+                               </SelectContent>
+                             </Select>
+                           </div>
+                       )}
+                       
+                       <Separator className="my-2" />
+                       
+                       <div className="grid grid-cols-4 items-center gap-x-4 gap-y-1">
+                         <Label htmlFor="library-task-code" className="text-right text-xs">Code</Label>
+                         <Input id="library-task-code" value={taskCode} onChange={(e) => setTaskCode(e.target.value)} className="col-span-3 h-8 text-xs" />
+                       </div>
+                        <div className="grid grid-cols-4 items-center gap-x-4 gap-y-1">
+                          <Label htmlFor="library-task-config" className="text-right text-xs">Config Option</Label>
+                          <Input id="library-task-config" value={taskConfigOption} onChange={(e) => setTaskConfigOption(e.target.value)} className="col-span-3 h-8 text-xs" />
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-x-4 gap-y-1">
+                          <Label htmlFor="library-task-time" className="text-right text-xs">Time (Hours)</Label>
+                          <Input id="library-task-time" type="number" value={taskTime} onChange={(e) => setTaskTime(e.target.value)} className="col-span-3 h-8 text-xs" step="0.1" />
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-x-4 gap-y-1">
+                           <Label htmlFor="library-task-materials" className="text-right text-xs">Materials Cost</Label>
+                           <Input id="library-task-materials" type="number" value={taskMaterials} onChange={(e) => setTaskMaterials(e.target.value)} className="col-span-3 h-8 text-xs" step="0.01" />
+                        </div>
+                         <div className="grid grid-cols-4 items-center gap-x-4 gap-y-1">
+                           <Label htmlFor="library-task-image" className="text-right text-xs">Image</Label>
+                           <Button 
+                             variant="outline" 
+                             size="sm"
+                             className="col-span-3 h-8 text-xs justify-start text-muted-foreground" 
+                             onClick={handleImageButtonClick}
+                           >
+                              <Camera className="mr-2 h-4 w-4" />
+                              {taskImageFile ? taskImageFile : "Attach Image..."} 
+                           </Button>
+                         </div>
+                  </div>
+                 </ScrollArea>
+                 <div className="p-4 border-t flex justify-end bg-muted/50">
+                    <Button 
+                       type="button" 
+                       size="sm"
+                       onClick={handleSaveToLibraryAndQuote} 
+                       disabled={!libraryFieldsValid} 
+                     >
+                       Save to Library & Add to Quote
+                     </Button>
+                 </div>
+              </PopoverContent>
+            </Popover>
           </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="custom-task-price" className="text-right">Price*</Label>
-            <Input id="custom-task-price" type="number" value={taskPrice} onChange={(e) => setTaskPrice(e.target.value)} className="col-span-3" step="0.01" />
-          </div>
-           {/* Target Tier Dropdown */}
-          <div className="grid grid-cols-4 items-center gap-4">
-             <Label htmlFor="custom-task-tier" className="text-right">Target Tier*</Label>
-             <Select 
-               value={selectedTierId} 
-               onValueChange={setSelectedTierId} 
-               disabled={availableTiers.length === 0}
-             >
-               <SelectTrigger className="col-span-3">
-                 <SelectValue placeholder="Select a tier..." />
-               </SelectTrigger>
-               <SelectContent>
-                 {availableTiers.map(tier => (
-                   <SelectItem key={tier.id} value={tier.id}>{tier.name}</SelectItem>
-                 ))}
-                 {availableTiers.length === 0 && <SelectItem value="" disabled>No tiers available</SelectItem>}
-               </SelectContent>
-             </Select>
-           </div>
-        </div>
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button type="button" onClick={handleSave} disabled={!taskName.trim() || !selectedTierId || isNaN(parseFloat(taskPrice))}>
-            Add Task to Quote
-          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -366,6 +806,14 @@ export function PricebookPage() {
   const [canRedo, setCanRedo] = useState<boolean>(false);
   const [isProcessingAction, setIsProcessingAction] = useState<boolean>(false);
   const [isCustomTaskDialogOpen, setIsCustomTaskDialogOpen] = useState(false);
+
+  // --- Placeholder for History/Undo/Redo ---
+  const addOperationToHistory = useCallback((updatedQuote: Quote) => {
+    // TODO: Implement actual history tracking logic here
+    console.log("[History Placeholder] Operation recorded for quote:", updatedQuote.id);
+    // For now, just update the canUndo state slightly to show it's hooked up
+    setCanUndo(true); 
+  }, []);
 
   // --- CURRENT QUOTE LOGIC ---
   const currentQuote = useMemo(() => {
@@ -870,26 +1318,53 @@ export function PricebookPage() {
 
   const handleAddCustomTask = useCallback((newTask: QuoteTask, tierId: string) => {
     console.log("[handleAddCustomTask] Adding:", newTask, "to Tier:", tierId);
-     if (!currentQuoteId) { /* Error handling */ return; }
-     // Custom tasks always add as new, don't increment
+     if (!currentQuoteId) { /* Error handling */ console.error("Cannot add custom task: No current quote ID."); return; }
+     // Check if task already exists if it came from library (optional, based on ID structure)
+     // For now, assume custom/library tasks can be added multiple times or have unique IDs
+
      setCustomerQuotes(prevQuotes => 
       prevQuotes.map(quote => {
         if (quote.id === currentQuoteId) {
-          if (!(tierId in quote.tierTasks)) { /* Warning */ return quote; }
-          const updatedQuote = JSON.parse(JSON.stringify(quote));
-          updatedQuote.tierTasks[tierId].push(newTask); // Push directly
+          // Ensure the target tier exists
+          if (!(tierId in quote.tierTasks)) { 
+             console.warn(`Target tier ${tierId} does not exist in quote ${quote.id}. Creating tier implicitly.`);
+             // Optionally create the tier if it doesn't exist, or handle error
+             // For now, let's assume it should exist or log a warning and skip.
+             // If you want to create it: quote.tierTasks[tierId] = []; 
+              console.error(`Target tier ${tierId} does not exist in quote ${quote.id}. Cannot add task.`); 
+              return quote; 
+          }
+          
+          // Use deep copy only if necessary, immer might handle this if integrated
+          const updatedQuote = JSON.parse(JSON.stringify(quote)); 
+          
+          updatedQuote.tierTasks[tierId].push(newTask); // Push the new task
           updatedQuote.updatedAt = new Date().toISOString();
+          
+          // Recalculate total price if the task was added to the currently selected tier
           if (tierId === updatedQuote.selectedTierId) {
              updatedQuote.totalPrice = recalculateQuoteTotalForSelectedTier(updatedQuote);
+             console.log(` -> Recalculated total price for selected tier ${tierId}: ${updatedQuote.totalPrice}`);
           }
-          console.log(` -> Added custom task ${newTask.name} to tier ${tierId}`);
+          
+          console.log(` -> Added custom task ${newTask.name} (ID: ${newTask.taskId}) to tier ${tierId}`);
+          addOperationToHistory(updatedQuote); // Add to history after modification
           return updatedQuote;
         }
         return quote;
       })
      );
     console.log("[handleAddCustomTask] Finished adding custom task.");
-  }, [currentQuoteId]);
+  }, [currentQuoteId, addOperationToHistory]); // Added addOperationToHistory dependency
+
+  // Placeholder handler for saving the task to a library/database
+  const handleSaveTaskToLibrary = useCallback((taskData: QuoteTask, tierId: string) => {
+    // In a real application, this would interact with your API/database
+    console.log("[handleSaveTaskToLibrary] Request to save task:", taskData);
+    // You might want to add it to a local state representing the library,
+    // trigger a fetch to update the library, etc.
+    // For now, we just log it. The dialog also adds it to the quote via onAddCustomTask.
+  }, []);
 
   // --- RENDER LOGIC ---
   const selectedCategoryData = useMemo(() => {
@@ -946,9 +1421,11 @@ export function PricebookPage() {
   const handleOpenCustomTaskDialog = useCallback(() => {
       if (!currentQuoteId) {
           console.warn("Cannot add custom task: No quote selected.");
+          // Maybe show a toast notification here
           return;
-      }
-      setIsCustomTaskDialogOpen(true);
+       }
+       // Reset any lingering state from previous opens if needed (dialog useEffect handles this now)
+       setIsCustomTaskDialogOpen(true);
   }, [currentQuoteId]);
 
   return (
@@ -1151,6 +1628,7 @@ export function PricebookPage() {
           availableTiers={availableTiers}
           currentQuoteSelectedTierId={currentQuote?.selectedTierId || null}
           onAddCustomTask={handleAddCustomTask}
+          onSaveTaskToLibrary={handleSaveTaskToLibrary}
       />
     </TooltipProvider>
   );

@@ -82,10 +82,10 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Switch } from "@/components/ui/switch";
+import { Switch } from "@/components/ui/Switch";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
-import { Textarea } from "@/components/ui/textarea"; // <-- Add Textarea import
+import { Textarea } from "@/components/ui/textarea";
 
 // --- Fully functional Edit Task Dialog ---
 interface EditTaskDialogProps {
