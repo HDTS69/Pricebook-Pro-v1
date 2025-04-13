@@ -469,6 +469,11 @@ function QuoteDropdownSection({
   const [quoteConfirmDeleteId, setQuoteConfirmDeleteId] = useState<string | null>(null); // State for delete confirmation
   const [isProcessingQuoteAction, setIsProcessingQuoteAction] = useState<boolean>(false); // State for async actions
   const [confirmingDeleteAll, setConfirmingDeleteAll] = useState<boolean>(false); // State for delete all confirmation
+  const [isQuoteDuplicatePopoverOpen, setIsQuoteDuplicatePopoverOpen] = useState<boolean>(false);
+  const [duplicatingQuoteId, setDuplicatingQuoteId] = useState<string | null>(null);
+  // Add state for quote duplication options
+  const [duplicateQuoteTargetIds, setDuplicateQuoteTargetIds] = useState<string[]>([]); 
+  const [duplicateQuoteNewCount, setDuplicateQuoteNewCount] = useState<number>(1); 
 
   // Effect to focus input when renaming starts
   useEffect(() => {
@@ -484,6 +489,10 @@ function QuoteDropdownSection({
         setEditingQuoteName("");
         setQuoteConfirmDeleteId(null);
         setConfirmingDeleteAll(false);
+        setIsQuoteDuplicatePopoverOpen(false); // Reset popover state
+        setDuplicatingQuoteId(null);
+        setDuplicateQuoteTargetIds([]); // Reset duplication state
+        setDuplicateQuoteNewCount(1);   // Reset duplication state
         // Keep isQuoteDropdownOpen managed by onOpenChange
     }
   }, [isQuoteDropdownOpen, currentQuote?.id]);
@@ -555,12 +564,15 @@ function QuoteDropdownSection({
   
   const handleDuplicateQuoteClick = (e: React.MouseEvent, quoteId: string) => {
       e.stopPropagation();
-      setIsProcessingQuoteAction(true);
-      onDuplicateQuote(quoteId);
-      setTimeout(() => { // Simulate async
-          setIsProcessingQuoteAction(false);
-          // Keep dropdown open or close based on desired UX
-      }, 300);
+      // Instead of directly calling, set state to open the popover
+      setDuplicatingQuoteId(quoteId);
+      setIsQuoteDuplicatePopoverOpen(true);
+      // Reset other potentially conflicting states
+      setEditingQuoteId(null);
+      setQuoteConfirmDeleteId(null);
+      setConfirmingDeleteAll(false);
+      // setIsProcessingQuoteAction(true); // Don't set processing yet
+      // onDuplicateQuote(quoteId); // Don't call directly
   };
   
   const handleDeleteAllQuotesConfirmClick = () => {
@@ -582,12 +594,20 @@ function QuoteDropdownSection({
   };
 
   const handleDropdownOpenChange = (open: boolean) => {
+      // Prevent closing the main dropdown if the quote duplicate popover is open
+      if (!open && isQuoteDuplicatePopoverOpen) {
+          return; 
+      }
       if (open) {
           // Reset states when opening, except if already processing
           if (!isProcessingQuoteAction) {
               setEditingQuoteId(null);
               setQuoteConfirmDeleteId(null);
-              setConfirmingDeleteAll(false); // Corrected: Use false instead of null
+              setConfirmingDeleteAll(false); 
+              setIsQuoteDuplicatePopoverOpen(false); // Ensure popover is closed on main dropdown open
+              setDuplicatingQuoteId(null);
+              setDuplicateQuoteTargetIds([]); // Reset duplication state
+              setDuplicateQuoteNewCount(1);   // Reset duplication state
           }
       }
       setIsQuoteDropdownOpen(open);
@@ -595,9 +615,60 @@ function QuoteDropdownSection({
 
   const handleDropdownCloseAutoFocus = (e: Event) => {
     // Prevent focus-related close if editing, confirming delete, or confirming delete all
-    if (editingQuoteId || quoteConfirmDeleteId || confirmingDeleteAll) {
+    if (editingQuoteId || quoteConfirmDeleteId || confirmingDeleteAll || isQuoteDuplicatePopoverOpen) {
       e.preventDefault();
     }
+  };
+
+  // New handler for confirming duplication from popover
+  const handleConfirmQuoteDuplicate = () => {
+    if (!duplicatingQuoteId) return;
+    
+    setIsProcessingQuoteAction(true);
+    
+    // TODO: The onDuplicateQuote prop needs modification in PricebookPage.tsx
+    // to handle overwriting (destinationId) and potentially naming new copies.
+    // For now, it will likely call the existing onDuplicateQuote multiple times.
+    
+    const sourceQuoteName = customerQuotes.find(q => q.id === duplicatingQuoteId)?.name || 'Quote';
+    let copyCounter = 1;
+
+    const getNextCopyName = (baseName: string): string => {
+        let newName: string;
+        do {
+            newName = `${baseName} Copy ${copyCounter++}`;
+        // Check against existing quote names (case-insensitive)
+        } while (customerQuotes.some(q => q.name.toLowerCase() === newName.toLowerCase())); 
+        return newName;
+    };
+
+    // Create new copies
+    if (duplicateQuoteNewCount > 0) {
+        for (let i = 0; i < duplicateQuoteNewCount; i++) {
+            // const newQuoteName = getNextCopyName(sourceQuoteName); // Naming might need adjustment in parent
+            console.log(`Popover: Duplicating ${duplicatingQuoteId} to NEW quote.`);
+            onDuplicateQuote(duplicatingQuoteId); // Call with source ID only for now
+        }
+    }
+
+    // Overwrite existing quotes
+    if (duplicateQuoteTargetIds.length > 0) {
+        duplicateQuoteTargetIds.forEach(destinationQuoteId => {
+            console.log(`Popover: Duplicating ${duplicatingQuoteId} OVERWRITING quote: ${destinationQuoteId}`);
+            // TODO: Pass destinationQuoteId to parent - onDuplicateQuote(duplicatingQuoteId, destinationQuoteId);
+            onDuplicateQuote(duplicatingQuoteId); // Call with source ID only for now
+        });
+    }
+
+    setTimeout(() => { // Simulate async completion
+        setIsProcessingQuoteAction(false);
+        setIsQuoteDuplicatePopoverOpen(false);
+        setDuplicatingQuoteId(null);
+        setDuplicateQuoteTargetIds([]); // Reset state
+        setDuplicateQuoteNewCount(1);   // Reset state
+        // Optionally close the main dropdown
+        // setIsQuoteDropdownOpen(false);
+    }, 300 + (duplicateQuoteNewCount + duplicateQuoteTargetIds.length) * 50); // Slightly longer timeout based on actions
   };
 
   return (
@@ -671,7 +742,93 @@ function QuoteDropdownSection({
                            ) : (
                                <div className={`flex items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity`}>
                                    <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={(e) => { e.stopPropagation(); handleStartRenameQuote(quote); }} title={`Rename Quote ${quote.sequenceNumber}`} disabled={editingQuoteId !== null || quoteConfirmDeleteId !== null || isProcessingQuoteAction}><Pencil className="h-4 w-4" /></Button>
-                                   <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={(e) => handleDuplicateQuoteClick(e, quote.id)} title={`Duplicate Quote ${quote.sequenceNumber}`} disabled={editingQuoteId !== null || quoteConfirmDeleteId !== null || isProcessingQuoteAction}><Copy className="h-4 w-4" /></Button>
+                                   {/* Wrap Duplicate Button with Popover */}
+                                   <Popover open={isQuoteDuplicatePopoverOpen && duplicatingQuoteId === quote.id} onOpenChange={setIsQuoteDuplicatePopoverOpen}>
+                                     <PopoverTrigger asChild>
+                                       <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={(e) => handleDuplicateQuoteClick(e, quote.id)} title={`Duplicate Quote ${quote.sequenceNumber}`} disabled={editingQuoteId !== null || quoteConfirmDeleteId !== null || isProcessingQuoteAction}><Copy className="h-4 w-4" /></Button>
+                                     </PopoverTrigger>
+                                     <PopoverContent 
+                                         className="w-56 p-2" 
+                                         side="right" 
+                                         align="start"
+                                         onInteractOutside={(e) => {
+                                             // Prevent closing dropdown when interacting outside popover
+                                             const target = e.target as HTMLElement;
+                                             if (target.closest('[role="menuitem"]') || target.closest('[role="menu"]')) {
+                                                 e.preventDefault(); 
+                                             } else {
+                                                 setIsQuoteDuplicatePopoverOpen(false);
+                                                 setDuplicatingQuoteId(null);
+                                             }
+                                         }}
+                                     >
+                                       <div className="space-y-2 text-xs">
+                                         {/* Flex container for Title and Close Button */}
+                                         <div className="flex justify-between items-center mb-2 border-b pb-1">
+                                             <div className="font-semibold text-sm flex-grow text-center">Duplicate '{duplicatingQuoteId ? (customerQuotes.find(q=>q.id === duplicatingQuoteId)?.name || 'Quote') : ''}'</div>
+                                             <Button 
+                                                 variant="ghost" 
+                                                 size="icon" 
+                                                 className="h-6 w-6 text-muted-foreground hover:text-foreground shrink-0"
+                                                 onClick={(e) => { e.stopPropagation(); setIsQuoteDuplicatePopoverOpen(false); setDuplicatingQuoteId(null); }} 
+                                                 title="Close"
+                                             >
+                                                 <CancelIcon className="h-4 w-4" />
+                                             </Button>
+                                         </div>
+                                         {/* Input for New Copies */}
+                                         <div className="space-y-1">
+                                             <Label htmlFor="new-quote-count" className="font-medium px-1">Create New Copies</Label>
+                                             <Input 
+                                               id="new-quote-count"
+                                               type="number" 
+                                               min="0" 
+                                               value={duplicateQuoteNewCount} 
+                                               onChange={(e) => { e.stopPropagation(); setDuplicateQuoteNewCount(Math.max(0, parseInt(e.target.value, 10) || 0)); }}
+                                               onClick={(e) => e.stopPropagation()} 
+                                               className="h-7 text-xs w-20"
+                                             />
+                                         </div>
+                                         <Separator className="my-2" />
+                                         {/* Checkboxes for Overwrite */}
+                                         <div className="space-y-1">
+                                             <Label className="font-medium px-1 block mb-1">Overwrite Existing Quotes</Label>
+                                             <ScrollArea className="max-h-32 pr-2">
+                                               {customerQuotes
+                                                 .filter(q => q.id !== duplicatingQuoteId)
+                                                 .map(destQuote => (
+                                                   <div key={destQuote.id} className="flex items-center space-x-2 py-1 px-1 rounded hover:bg-accent" onClick={(e) => e.stopPropagation()}> 
+                                                     <Checkbox 
+                                                       id={`duplicate-target-quote-${destQuote.id}`} 
+                                                       checked={duplicateQuoteTargetIds.includes(destQuote.id)} 
+                                                       onCheckedChange={(checked) => {
+                                                         setDuplicateQuoteTargetIds(prev => 
+                                                           checked 
+                                                             ? [...prev, destQuote.id] 
+                                                             : prev.filter(id => id !== destQuote.id)
+                                                         );
+                                                       }}
+                                                     />
+                                                     <label htmlFor={`duplicate-target-quote-${destQuote.id}`} className="text-xs font-normal leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 flex-grow cursor-pointer truncate" title={destQuote.name} onClick={(e) => e.stopPropagation()}> 
+                                                      {destQuote.name} ({formatCurrency(destQuote.totalPrice)})
+                                                     </label>
+                                                   </div>
+                                                 ))}
+                                               {customerQuotes.length <= 1 && (<div className="text-muted-foreground italic px-2 text-center py-2">(No other quotes to overwrite)</div>)}
+                                             </ScrollArea>
+                                         </div>
+                                         <Separator className="my-2" />
+                                         {/* Confirmation Button */}
+                                         <Button 
+                                             className="w-full h-8 text-xs mt-2" 
+                                             onClick={handleConfirmQuoteDuplicate}
+                                             disabled={isProcessingQuoteAction || (duplicateQuoteNewCount === 0 && duplicateQuoteTargetIds.length === 0)}
+                                         >
+                                             Duplicate ({duplicateQuoteNewCount + duplicateQuoteTargetIds.length})
+                                         </Button>
+                                       </div>
+                                     </PopoverContent>
+                                   </Popover>
                                    <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:bg-destructive/10" onClick={(e) => { e.stopPropagation(); setQuoteConfirmDeleteId(quote.id); }} title={`Delete Quote ${quote.sequenceNumber}`} disabled={editingQuoteId !== null || quoteConfirmDeleteId !== null || isProcessingQuoteAction}><Trash2 className="h-4 w-4" /></Button>
                                </div>
                            )}
