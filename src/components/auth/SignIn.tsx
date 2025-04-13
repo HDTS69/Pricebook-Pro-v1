@@ -63,6 +63,7 @@ export function SignIn() {
                 onChange={handleChange}
                 disabled={loading}
                 required
+                autoComplete="username"
               />
             </div>
             <div className="space-y-2">
@@ -77,6 +78,7 @@ export function SignIn() {
                 onChange={handleChange}
                 disabled={loading}
                 required
+                autoComplete="current-password"
               />
             </div>
 

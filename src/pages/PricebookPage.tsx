@@ -39,6 +39,7 @@ import { ActionHistoryProvider, AppHistoryState } from '@/contexts/ActionHistory
 import { useUndoService } from '@/hooks/useUndoService';
 import { ActionHistoryPanel } from '@/components/pricebook/ActionHistoryPanel';
 import { useUndoRedoShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { useSupabaseClient } from '@supabase/auth-helpers-react'; // Added import for Supabase
 
 // --- Define Default Tier Constant ---
 const DEFAULT_TIER: Tier = {
@@ -286,6 +287,8 @@ function AddCustomTaskDialog({
   const [isEnhancingTitle, setIsEnhancingTitle] = useState(false); // AI Loading state for Title
   const [isGeneratingDesc, setIsGeneratingDesc] = useState(false); // State for popover description AI
 
+  const supabase = useSupabaseClient(); // Get Supabase client instance
+
   // --- Derived State for Dropdowns ---
   const availableSubcategories = useMemo(() => {
     const category = serviceCategories.find(c => c.id === selectedCategoryId);
@@ -362,48 +365,208 @@ function AddCustomTaskDialog({
 
   // --- AI Placeholder Handlers ---
   const handleEnhanceName = useCallback(async () => {
-    if (!taskName.trim()) return;
+    if (!taskName.trim() || !supabase) return; // Add check for supabase client
+
     setIsEnhancingName(true);
-    console.log("[AI Placeholder] Enhancing Name:", taskName);
-    await new Promise(resolve => setTimeout(resolve, 1000)); 
-    setTaskName(prev => `${prev} [AI Enhanced]`);
-    setIsEnhancingName(false);
-  }, [taskName]);
+    console.log("[AI] Enhancing Name:", taskName);
+
+    try {
+      // --- Get Supabase Auth Token --- <<< ADDING THIS BLOCK BACK
+      console.log("Checking Supabase session..."); // <-- ADD LOG
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      console.log("Raw session data:", session); // <-- ADD LOG
+      console.log("Raw session error:", sessionError); // <-- ADD LOG
+
+      if (sessionError) {
+        console.error("Error fetching session:", sessionError); // <-- ADD LOG
+        throw new Error(`Supabase session error: ${sessionError.message}`);
+      }
+      if (!session) {
+        console.error("Session object is null or undefined after check."); // <-- ADD LOG
+        throw new Error('User not authenticated'); // Or handle appropriately
+      }
+      const token = session.access_token;
+      console.log("Retrieved token successfully."); // <-- ADD LOG
+      // --- End Get Supabase Auth Token ---
+
+      // Use the full Supabase function URL
+      const response = await fetch('https://ybkgvombhjchlcmbrizk.supabase.co/functions/v1/enhance-name', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`, // Ensure token is used here
+        },
+        body: JSON.stringify({ text: taskName }),
+      });
+
+      if (!response.ok) {
+        // Try to get more detailed error from response body if available
+        let errorBody = null;
+        try {
+            errorBody = await response.json();
+        } catch (e) { /* Ignore parsing error */ }
+        console.error("[AI] API Error Response Body:", errorBody);
+        throw new Error(`API Error: ${response.statusText} (Status: ${response.status}) ${errorBody?.error ? `- ${errorBody.error}` : ''}`);
+      }
+
+      const data = await response.json();
+      // Assuming the API returns { result: "enhanced name" }
+      if (data.result) {
+        setTaskName(data.result);
+      } else {
+        console.error("[AI] No result found in API response:", data);
+        // Optional: Keep the original name or show an error
+      }
+    } catch (error) {
+      console.error("[AI] Failed to enhance name:", error);
+      // Optional: Add user feedback (e.g., toast notification)
+      // Example: toast.error(`Error enhancing name: ${error.message}`);
+    } finally {
+      setIsEnhancingName(false);
+    }
+  }, [taskName, supabase]); // Ensure supabase is in dependency array
 
   const handleGenerateMainDescription = useCallback(async () => {
-    const basis = taskName.trim(); 
-    if (!basis) {
-        console.warn("[AI Placeholder] Cannot generate main description without a name.");
+    const basis = taskName.trim();
+    if (!basis || !supabase) { // Add check for supabase client
+        console.warn("[AI] Cannot generate main description without a name or supabase client.");
         return;
     }
     setIsGeneratingMainDesc(true);
-    console.log("[AI Placeholder] Generating Main Description based on:", basis);
-    await new Promise(resolve => setTimeout(resolve, 1000)); 
-    setTaskDesc(`AI description for "${basis}": Standard procedure includes setup, execution, and cleanup.`); // Set main description state
-    setIsGeneratingMainDesc(false);
-  }, [taskName]);
+    console.log("[AI] Generating Main Description based on:", basis);
+    try {
+      // --- Get Supabase Auth Token ---
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+      if (sessionError) {
+        throw new Error(`Supabase session error: ${sessionError.message}`);
+      }
+      if (!session) {
+        throw new Error('User not authenticated');
+      }
+      const token = session.access_token;
+      // --- End Get Supabase Auth Token ---
+
+      // Replace with your actual API endpoint
+      const response = await fetch('https://ybkgvombhjchlcmbrizk.supabase.co/functions/v1/generate-description', { // Or use the full Supabase function URL if needed
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`, // <<<--- ADDED AUTH HEADER
+        },
+        body: JSON.stringify({ text: basis }), // Send the name as basis
+      });
+
+      if (!response.ok) {
+        let errorBody = null;
+        try { errorBody = await response.json(); } catch (e) { /* Ignore */ }
+        console.error("[AI] API Error Response Body:", errorBody);
+        throw new Error(`API Error: ${response.statusText} (Status: ${response.status}) ${errorBody?.error ? `- ${errorBody.error}` : ''}`);
+      }
+
+      const data = await response.json();
+      // Assuming the API returns { result: "generated description" }
+      if (data.result) {
+        setTaskDesc(data.result); // Update the main description state
+      } else {
+        console.error("[AI] No result found in API response for description:", data);
+        // Optional: Keep the original description or show an error
+      }
+    } catch (error) {
+      console.error("[AI] Failed to generate main description:", error);
+      // Optional: Add user feedback
+    } finally {
+      setIsGeneratingMainDesc(false);
+    }
+  }, [taskName, supabase]); // Add supabase to dependency array
 
   const handleEnhanceTitle = useCallback(async () => {
-    if (!taskTitle.trim()) return;
+    if (!taskTitle.trim() || !supabase) return; // Add check for supabase client
     setIsEnhancingTitle(true);
-    console.log("[AI Placeholder] Enhancing Title:", taskTitle);
-    await new Promise(resolve => setTimeout(resolve, 1000)); 
-    setTaskTitle(prev => `${prev} [AI Enhanced]`);
-    setIsEnhancingTitle(false);
-  }, [taskTitle]);
+    console.log("[AI] Enhancing Title:", taskTitle);
+    try {
+      // --- Get Supabase Auth Token ---
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw new Error(`Supabase session error: ${sessionError.message}`);
+      if (!session) throw new Error('User not authenticated');
+      const token = session.access_token;
+      // --- End Get Supabase Auth Token ---
+
+      // Replace with your actual API endpoint (could reuse enhance-name endpoint or use enhance-title)
+      const response = await fetch('https://ybkgvombhjchlcmbrizk.supabase.co/functions/v1/enhance-title', { // Or use the full Supabase function URL if needed
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`, // <<<--- ADDED AUTH HEADER
+        },
+        body: JSON.stringify({ text: taskTitle }),
+      });
+
+      if (!response.ok) {
+        let errorBody = null;
+        try { errorBody = await response.json(); } catch (e) { /* Ignore */ }
+        console.error("[AI] API Error Response Body:", errorBody);
+        throw new Error(`API Error: ${response.statusText} (Status: ${response.status}) ${errorBody?.error ? `- ${errorBody.error}` : ''}`);
+      }
+
+      const data = await response.json();
+      if (data.result) {
+        setTaskTitle(data.result);
+      } else {
+        console.error("[AI] No result found for title enhancement:", data);
+      }
+    } catch (error) {
+      console.error("[AI] Failed to enhance title:", error);
+    } finally {
+      setIsEnhancingTitle(false);
+    }
+  }, [taskTitle, supabase]); // Add supabase to dependency array
 
   const handleGenerateLibraryDescription = useCallback(async () => {
-    const basis = taskTitle.trim() || taskName.trim(); 
-    if (!basis) {
-        console.warn("[AI Placeholder] Cannot generate library description without a title or name.");
+    const basis = taskTitle.trim() || taskName.trim();
+    if (!basis || !supabase) { // Add check for supabase client
+        console.warn("[AI] Cannot generate library description without a title/name or supabase client.");
         return;
     }
     setIsGeneratingDesc(true);
-    console.log("[AI Placeholder] Generating Library Description based on:", basis);
-    await new Promise(resolve => setTimeout(resolve, 1000)); 
-    setLibraryTaskDesc(`Detailed AI description for library task "${basis}": This involves meticulous planning, execution following best practices, use of premium materials (where applicable), and thorough post-job inspection.`);
-    setIsGeneratingDesc(false);
-  }, [taskTitle, taskName]);
+    console.log("[AI] Generating Library Description based on:", basis);
+    try {
+      // --- Get Supabase Auth Token ---
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw new Error(`Supabase session error: ${sessionError.message}`);
+      if (!session) throw new Error('User not authenticated');
+      const token = session.access_token;
+      // --- End Get Supabase Auth Token ---
+
+      // Replace with your actual API endpoint
+      const response = await fetch('https://ybkgvombhjchlcmbrizk.supabase.co/functions/v1/generate-library-description', { // Or use the full Supabase function URL if needed
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`, // <<<--- ADDED AUTH HEADER
+        },
+        body: JSON.stringify({ text: basis }), // Send title or name as basis
+      });
+
+      if (!response.ok) {
+        let errorBody = null;
+        try { errorBody = await response.json(); } catch (e) { /* Ignore */ }
+        console.error("[AI] API Error Response Body:", errorBody);
+        throw new Error(`API Error: ${response.statusText} (Status: ${response.status}) ${errorBody?.error ? `- ${errorBody.error}` : ''}`);
+      }
+
+      const data = await response.json();
+      if (data.result) {
+        setLibraryTaskDesc(data.result); // Update the library description state
+      } else {
+        console.error("[AI] No result found for library description:", data);
+      }
+    } catch (error) {
+      console.error("[AI] Failed to generate library description:", error);
+    } finally {
+      setIsGeneratingDesc(false);
+    }
+  }, [taskTitle, taskName, supabase]); // Add supabase to dependency array
 
   // --- End AI Placeholder Handlers ---
 
@@ -805,6 +968,9 @@ export function PricebookPage() {
   const [isCustomTaskDialogOpen, setIsCustomTaskDialogOpen] = useState(false);
   const [isHistoryPanelOpen, setIsHistoryPanelOpen] = useState(false);
   
+  // *** Ensure Supabase client is obtained early ***
+  const supabase = useSupabaseClient(); // <<< MOVED/ENSURED DECLARATION IS HERE
+
   // Use undo service for history management
   const { 
     canUndo, 
@@ -1446,6 +1612,39 @@ export function PricebookPage() {
     currentQuoteId,
     customers: allCustomers
   };
+
+  // --- DEBUG: Log session on component mount ---
+  useEffect(() => {
+    const checkSession = async () => {
+      console.log("[PricebookPage Mount] Checking Supabase session on mount...");
+      if (!supabase) { // This check should now find supabase if context is set up
+        console.log("[PricebookPage Mount] Supabase client not available on mount.");
+        return;
+      }
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) {
+          console.error("[PricebookPage Mount] Error getting session on mount:", error);
+        } else {
+          console.log("[PricebookPage Mount] Session on mount:", session);
+        }
+        
+        // Also try getting the user directly
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+         if (userError) {
+          console.error("[PricebookPage Mount] Error getting user on mount:", userError);
+        } else {
+          console.log("[PricebookPage Mount] User on mount:", user);
+        }
+
+      } catch (catchError) {
+        console.error("[PricebookPage Mount] Exception during session check:", catchError);
+      }
+    };
+
+    checkSession();
+  }, [supabase]); // Dependency array includes supabase
+  // --- END DEBUG ---
 
   return (
     <ActionHistoryProvider 
