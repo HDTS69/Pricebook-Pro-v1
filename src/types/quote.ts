@@ -63,10 +63,23 @@ export interface Quote {
   acceptedAt?: string; // Optional ISO date string
 }
 
+export interface Address {
+  street?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postcode?: string | null;
+  country?: string | null;
+}
+
 export interface Customer {
-  id: string;
-  name: string;
+  id: string;                 // Corresponds to ServiceM8 UUID
+  name: string;               // Company Name or Primary Contact Name
   email?: string | null;
-  phone?: string | null;
-  address?: string | null;
+  phone?: string | null;        // Primary landline or office phone
+  mobile_phone?: string | null; // Mobile phone number
+  billing_address?: Address | null; // Structured billing address
+  // Potential read-only fields from ServiceM8 (optional)
+  // active?: boolean;
+  // edit_date?: string; // ISO Date
+  // creation_date?: string; // ISO Date
 } 

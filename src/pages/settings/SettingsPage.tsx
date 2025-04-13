@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Switch } from '@/components/ui/Switch';
 import { Separator } from '@/components/ui/separator';
-import { Building2, Mail, /* DollarSign, */ Palette, Bell, BookOpen, ListChecks, Timer, Package } from 'lucide-react';
+import { Building2, Mail, /* DollarSign, */ Palette, Bell, BookOpen, ListChecks, Timer, Package, ExternalLink } from 'lucide-react';
 
 interface SettingsSection {
   id: string;
@@ -46,6 +46,21 @@ const settingsSections: SettingsSection[] = [
     description: 'Manage your notification preferences.',
   },
 ];
+
+const SERVICE_M8_APP_ID = import.meta.env.VITE_SERVICEM8_APP_ID;
+// Use localhost for development, replace with your production URL
+const REDIRECT_URI = import.meta.env.DEV 
+  ? 'http://localhost:5173/auth/servicem8/callback' 
+  : 'YOUR_PRODUCTION_CALLBACK_URL'; // <-- TODO: Replace with your actual production callback URL
+
+const SCOPES = [
+  'read_customers', 
+  'manage_customers',
+  'read_customer_contacts',
+  'manage_customer_contacts'
+].join('%20'); // URL encoded space
+
+const AUTH_URL = `https://go.servicem8.com/oauth/authorize?response_type=code&client_id=${SERVICE_M8_APP_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${SCOPES}`;
 
 export function SettingsPage() {
   const [activeSection, setActiveSection] = React.useState('business');
@@ -88,6 +103,14 @@ export function SettingsPage() {
     // TODO: Implement actual saving logic
     alert("Price Book Settings saved (check console)"); // Simple feedback
   };
+
+  const handleConnectServiceM8 = () => {
+    // Redirect the user to the ServiceM8 authorization page
+    window.location.href = AUTH_URL;
+  };
+
+  // TODO: Add state to check if already connected to ServiceM8
+  const isConnected = false; // Placeholder
 
   return (
     <DashboardLayout>
@@ -350,6 +373,34 @@ export function SettingsPage() {
                 </CardContent>
               </Card>
             )}
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Integrations</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between p-4 border rounded-md">
+                  <div>
+                    <h3 className="font-semibold">ServiceM8</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {isConnected 
+                        ? 'Connected. Syncs customer data.' 
+                        : 'Connect your ServiceM8 account to sync customer data.'}
+                    </p>
+                  </div>
+                  {isConnected ? (
+                     <Button variant="outline" disabled>Connected</Button> // TODO: Add disconnect logic
+                  ) : (
+                    <Button onClick={handleConnectServiceM8}>
+                      Connect to ServiceM8
+                      <ExternalLink className="ml-2 h-4 w-4" />
+                    </Button>
+                  )}
+                 
+                </div>
+                 {/* Add other integration settings here */}
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>

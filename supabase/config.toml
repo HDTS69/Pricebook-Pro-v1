@@ -1,0 +1,12 @@
+# Minimal Supabase config file
+
+# Required project ID
+project_id = "ybkgvombhjchlcmbrizk" # Replace if different, but this matches your logs
+
+[functions]
+  # Specifies the directory containing your Edge Functions
+  # The default is "supabase/functions"
+  # No need to explicitly set if using the default, but we'll include it for clarity
+  # dir = "supabase/functions"
+
+# You can add other sections like [auth], [db], [storage] as needed 

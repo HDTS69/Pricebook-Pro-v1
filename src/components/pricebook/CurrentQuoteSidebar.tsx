@@ -23,6 +23,7 @@ import {
   Eraser,
   Users,
   Phone,
+  Home,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -86,7 +87,8 @@ function CustomerDetailsSection({
   onCustomerSelect,
 }: CustomerDetailsSectionProps) {
   const [isEditingCustomer, setIsEditingCustomer] = useState<boolean>(false);
-  const [editableCustomer, setEditableCustomer] = useState<Customer | null>(null);
+  // Initialize with structured address
+  const [editableCustomer, setEditableCustomer] = useState<Customer>(() => ({ ...customer, billing_address: customer.billing_address ? { ...customer.billing_address } : {} }));
   const [isSelectingCustomer, setIsSelectingCustomer] = useState<boolean>(false);
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
   const customerNameInputRef = useRef<HTMLInputElement>(null);
@@ -94,7 +96,11 @@ function CustomerDetailsSection({
   // Effect to reset editable customer when the main customer prop changes or editing stops
   useEffect(() => {
     if (customer && !isEditingCustomer) {
-      setEditableCustomer({ ...customer });
+      // Deep copy billing_address
+      setEditableCustomer({ 
+        ...customer, 
+        billing_address: customer.billing_address ? { ...customer.billing_address } : {}
+      });
     }
   }, [customer, isEditingCustomer]);
 
@@ -115,6 +121,7 @@ function CustomerDetailsSection({
     }
   }, [isSelectingCustomer, isEditingCustomer]);
 
+  // Update filter logic for structured address
   const filteredCustomers = useMemo(() => {
     const lowerCaseQuery = customerSearchQuery.toLowerCase().trim();
     if (!lowerCaseQuery) {
@@ -124,7 +131,13 @@ function CustomerDetailsSection({
       cust.name.toLowerCase().includes(lowerCaseQuery) ||
       cust.email?.toLowerCase().includes(lowerCaseQuery) ||
       cust.phone?.toLowerCase().includes(lowerCaseQuery) ||
-      cust.address?.toLowerCase().includes(lowerCaseQuery) 
+      cust.mobile_phone?.toLowerCase().includes(lowerCaseQuery) ||
+      (cust.billing_address && (
+        cust.billing_address.street?.toLowerCase().includes(lowerCaseQuery) ||
+        cust.billing_address.city?.toLowerCase().includes(lowerCaseQuery) ||
+        cust.billing_address.state?.toLowerCase().includes(lowerCaseQuery) ||
+        cust.billing_address.postcode?.toLowerCase().includes(lowerCaseQuery)
+      ))
     );
   }, [allCustomers, customerSearchQuery]);
 
@@ -134,13 +147,21 @@ function CustomerDetailsSection({
   };
 
   const handleStartEditCustomer = () => { 
-    setEditableCustomer({ ...customer }); // Initialize editable state with current customer
+    // Ensure deep copy of address on edit start
+    setEditableCustomer({ 
+      ...customer, 
+      billing_address: customer.billing_address ? { ...customer.billing_address } : {}
+    }); 
     setIsEditingCustomer(true); 
     setIsSelectingCustomer(false); // Ensure selection mode is off
   };
   
   const handleCancelEditCustomer = () => { 
-    setEditableCustomer({ ...customer }); // Reset changes
+    // Reset changes by deep copying original customer again
+    setEditableCustomer({ 
+      ...customer, 
+      billing_address: customer.billing_address ? { ...customer.billing_address } : {}
+    }); 
     setIsEditingCustomer(false); 
   };
 
@@ -155,19 +176,50 @@ function CustomerDetailsSection({
     } 
   };
 
+  // Updated input change handler for nested address fields
   const handleCustomerInputChange = (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => { 
     const { name, value } = event.target; 
-    setEditableCustomer(prev => prev ? { ...prev, [name]: value } : null); 
+    setEditableCustomer(prev => {
+      if (!prev) return null;
+      // Check if the field belongs to the billing_address object
+      if (name.startsWith('billing_address.')) {
+        const addressField = name.split('.')[1] as keyof Address;
+        return {
+          ...prev,
+          billing_address: {
+            ...(prev.billing_address || {}),
+            [addressField]: value
+          }
+        };
+      } else {
+        // Handle top-level fields
+        return { ...prev, [name]: value };
+      }
+    }); 
   };
   
+  // handleCustomerKeyDown remains the same
   const handleCustomerKeyDown = (event: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => { 
-    if (event.key === 'Enter' && event.target instanceof HTMLInputElement) { // Only save on Enter in Inputs, not TextArea
+    if (event.key === 'Enter' && event.target instanceof HTMLInputElement) {
       handleSaveCustomer(); 
     } else if (event.key === 'Escape') { 
       handleCancelEditCustomer(); 
     } 
   };
-  
+
+  // Helper to format address for display
+  const formatAddress = (address: Address | null | undefined): string => {
+    if (!address) return "N/A";
+    const parts = [
+      address.street,
+      address.city,
+      address.state,
+      address.postcode,
+      address.country,
+    ].filter(Boolean); // Filter out null/undefined/empty strings
+    return parts.join(', ') || "N/A";
+  };
+
   return (
     <section className="px-4">
       <h3 className="text-sm font-semibold mb-2 flex items-center">
@@ -195,6 +247,7 @@ function CustomerDetailsSection({
       </h3>
       <div className="text-xs bg-muted p-3 rounded-md">
         {isSelectingCustomer ? (
+          // --- Customer Selection UI (Update filter display if needed) ---
           <div className="space-y-2">
              <Input 
                 placeholder="Search customers..."
@@ -221,6 +274,15 @@ function CustomerDetailsSection({
                          <Phone className="h-2.5 w-2.5 mr-1 shrink-0"/>
                          <span>{cust.phone || 'N/A'}</span>
                        </div>
+                        {/* Optionally display mobile or address snippet */} 
+                       <div className="flex items-center text-[11px] text-muted-foreground truncate">
+                         <Smartphone className="h-2.5 w-2.5 mr-1 shrink-0"/>
+                         <span>{cust.mobile_phone || 'N/A'}</span>
+                       </div>
+                        <div className="flex items-center text-[11px] text-muted-foreground truncate">
+                         <Home className="h-2.5 w-2.5 mr-1 shrink-0"/>
+                         <span className="truncate">{formatAddress(cust.billing_address)}</span>
+                       </div>
                      </div>
                    ))
                  ) : (
@@ -230,7 +292,9 @@ function CustomerDetailsSection({
              </ScrollArea>
            </div>
         ) : isEditingCustomer && editableCustomer ? (
+          // --- Customer Editing UI (Updated for new fields) ---
            <>
+            {/* Name Input */}
             <div className="flex items-center h-6 mb-1"> 
               <Label htmlFor="customerName" className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased">Name</Label>
               <Input 
@@ -243,6 +307,7 @@ function CustomerDetailsSection({
                 className="p-0 h-full font-sans text-foreground antialiased flex-grow bg-transparent border-0 shadow-none focus-visible:ring-0 rounded-none"
                 style={{ fontSize: '0.75rem', lineHeight: '1.25' }} /> 
             </div>
+            {/* Email Input */}
             <div className="flex items-center h-6 mb-1"> 
               <Label htmlFor="customerEmail" className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased">Email</Label>
               <Input 
@@ -255,6 +320,7 @@ function CustomerDetailsSection({
                 className="p-0 h-full font-sans text-foreground antialiased flex-grow bg-transparent border-0 shadow-none focus-visible:ring-0 rounded-none"
                 style={{ fontSize: '0.75rem', lineHeight: '1.25' }} /> 
             </div>
+            {/* Phone Input */}
             <div className="flex items-center h-6 mb-1"> 
               <Label htmlFor="customerPhone" className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased">Phone</Label>
               <Input 
@@ -266,36 +332,96 @@ function CustomerDetailsSection({
                 className="p-0 h-full font-sans text-foreground antialiased flex-grow bg-transparent border-0 shadow-none focus-visible:ring-0 rounded-none"
                 style={{ fontSize: '0.75rem', lineHeight: '1.25' }} /> 
             </div>
-            <div className="flex items-start h-auto mb-0"> 
-              <Label htmlFor="customerAddress" className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased pt-px">Address</Label>
-              <Textarea 
-                id="customerAddress" 
-                name="address" 
-                value={editableCustomer.address || ""} 
+             {/* Mobile Phone Input */}
+            <div className="flex items-center h-6 mb-1"> 
+              <Label htmlFor="customerMobilePhone" className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased">Mobile</Label>
+              <Input 
+                id="customerMobilePhone" 
+                name="mobile_phone" 
+                value={editableCustomer.mobile_phone || ""} 
                 onChange={handleCustomerInputChange} 
                 onKeyDown={handleCustomerKeyDown} 
-                rows={1} 
-                className="p-0 font-sans text-foreground antialiased flex-grow bg-transparent border-0 shadow-none focus-visible:ring-0 rounded-none resize-none overflow-hidden min-h-[24px]"
-                style={{ fontSize: '0.75rem', lineHeight: '1.25' }} />
+                className="p-0 h-full font-sans text-foreground antialiased flex-grow bg-transparent border-0 shadow-none focus-visible:ring-0 rounded-none"
+                style={{ fontSize: '0.75rem', lineHeight: '1.25' }} /> 
+            </div>
+            {/* Address Street Input */}
+            <div className="flex items-center h-6 mb-1"> 
+              <Label htmlFor="customerAddressStreet" className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased">Street</Label>
+              <Input 
+                id="customerAddressStreet" 
+                name="billing_address.street" 
+                value={editableCustomer.billing_address?.street || ""} 
+                onChange={handleCustomerInputChange} 
+                onKeyDown={handleCustomerKeyDown} 
+                className="p-0 h-full font-sans text-foreground antialiased flex-grow bg-transparent border-0 shadow-none focus-visible:ring-0 rounded-none"
+                style={{ fontSize: '0.75rem', lineHeight: '1.25' }} /> 
+            </div>
+            {/* Address City Input */}
+            <div className="flex items-center h-6 mb-1"> 
+              <Label htmlFor="customerAddressCity" className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased">City</Label>
+              <Input 
+                id="customerAddressCity" 
+                name="billing_address.city" 
+                value={editableCustomer.billing_address?.city || ""} 
+                onChange={handleCustomerInputChange} 
+                onKeyDown={handleCustomerKeyDown} 
+                className="p-0 h-full font-sans text-foreground antialiased flex-grow bg-transparent border-0 shadow-none focus-visible:ring-0 rounded-none"
+                style={{ fontSize: '0.75rem', lineHeight: '1.25' }} /> 
+            </div>
+            {/* Address State Input */}
+            <div className="flex items-center h-6 mb-1"> 
+              <Label htmlFor="customerAddressState" className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased">State</Label>
+              <Input 
+                id="customerAddressState" 
+                name="billing_address.state" 
+                value={editableCustomer.billing_address?.state || ""} 
+                onChange={handleCustomerInputChange} 
+                onKeyDown={handleCustomerKeyDown} 
+                className="p-0 h-full font-sans text-foreground antialiased flex-grow bg-transparent border-0 shadow-none focus-visible:ring-0 rounded-none"
+                style={{ fontSize: '0.75rem', lineHeight: '1.25' }} /> 
+            </div>
+             {/* Address Postcode Input */}
+            <div className="flex items-center h-6 mb-1"> 
+              <Label htmlFor="customerAddressPostcode" className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased">Postcode</Label>
+              <Input 
+                id="customerAddressPostcode" 
+                name="billing_address.postcode" 
+                value={editableCustomer.billing_address?.postcode || ""} 
+                onChange={handleCustomerInputChange} 
+                onKeyDown={handleCustomerKeyDown} 
+                className="p-0 h-full font-sans text-foreground antialiased flex-grow bg-transparent border-0 shadow-none focus-visible:ring-0 rounded-none"
+                style={{ fontSize: '0.75rem', lineHeight: '1.25' }} /> 
             </div>
            </>
         ) : (
+          // --- Customer Display UI (Updated for new fields) ---
            <>
+            {/* Name Display */}
             <div className="flex items-center h-6 mb-1"> 
               <span className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased">Name</span> 
               <span className="text-xs font-sans text-foreground antialiased flex-grow truncate" style={{ lineHeight: '1.25' }}>{customer.name}</span>
             </div>
+            {/* Email Display */}
             <div className="flex items-center h-6 mb-1"> 
               <span className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased">Email</span> 
               <span className="text-xs font-sans text-foreground antialiased flex-grow truncate" style={{ lineHeight: '1.25' }}>{customer.email || <span className="text-muted-foreground italic">N/A</span>}</span>
             </div>
+            {/* Phone Display */}
             <div className="flex items-center h-6 mb-1"> 
               <span className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased">Phone</span> 
               <span className="text-xs font-sans text-foreground antialiased flex-grow truncate" style={{ lineHeight: '1.25' }}>{customer.phone || <span className="text-muted-foreground italic">N/A</span>}</span>
             </div>
+             {/* Mobile Display */}
+             <div className="flex items-center h-6 mb-1"> 
+              <span className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased">Mobile</span> 
+              <span className="text-xs font-sans text-foreground antialiased flex-grow truncate" style={{ lineHeight: '1.25' }}>{customer.mobile_phone || <span className="text-muted-foreground italic">N/A</span>}</span>
+            </div>
+            {/* Address Display */}
             <div className="flex items-start h-auto mb-0"> 
               <span className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased pt-px">Address</span>
-              <span className="text-xs font-sans text-foreground antialiased flex-grow break-words whitespace-normal min-h-[24px]" style={{ lineHeight: '1.25' }}>{customer.address || <span className="text-muted-foreground italic">N/A</span>}</span>
+              <span className="text-xs font-sans text-foreground antialiased flex-grow break-words whitespace-normal min-h-[24px]" style={{ lineHeight: '1.25' }}>
+                 {formatAddress(customer.billing_address)}
+              </span>
             </div>
            </>
         )}
@@ -441,7 +567,7 @@ function QuoteDropdownSection({
       setTimeout(() => { // Simulate async
           setConfirmingDeleteAll(false);
           setIsProcessingQuoteAction(false);
-          setIsQuoteDropdownOpen(false); // Close dropdown after deleting all
+          // setIsQuoteDropdownOpen(false); // <-- REMOVE THIS LINE
       }, 300);
   };
 
@@ -449,7 +575,7 @@ function QuoteDropdownSection({
     const currentSequenceNumbers = customerQuotes.map(q => q.sequenceNumber);
     const nextSequenceNumber = currentSequenceNumbers.length > 0 ? Math.max(...currentSequenceNumbers) + 1 : 1;
     onAddQuote(nextSequenceNumber);
-    setIsQuoteDropdownOpen(false); // Close dropdown after adding
+    // setIsQuoteDropdownOpen(false); // <-- REMOVE THIS LINE
   };
 
   const handleDropdownOpenChange = (open: boolean) => {
@@ -1685,14 +1811,31 @@ export function CurrentQuoteSidebar({
                                                 </Button>
                                               </PopoverTrigger>
                                               <PopoverContent 
-                                                className="w-64 p-2" 
+                                                className="w-64 p-2 relative" // Add relative positioning
                                                 side="right" 
                                                 align="start" 
                                                 // Prevent closing dropdown when interacting outside popover
                                                 onInteractOutside={handlePopoverOutsideInteraction}
                                                >
+                                                  {/* Removed absolute positioned button */}
                                                   <div className="space-y-2 text-xs">
-                                                      <div className="font-semibold text-center mb-2 border-b pb-1">Duplicate '{duplicatingTierId ? getTierName(duplicatingTierId) : ''}</div>
+                                                      {/* Flex container for Title and Close Button */}
+                                                      <div className="flex justify-between items-center mb-2 border-b pb-1">
+                                                          <div className="font-semibold text-sm flex-grow text-center">Duplicate '{duplicatingTierId ? getTierName(duplicatingTierId) : ''}'</div>
+                                                          <Button 
+                                                              variant="ghost" 
+                                                              size="icon" 
+                                                              className="h-6 w-6 text-muted-foreground hover:text-foreground shrink-0" // Adjusted classes
+                                                              onClick={(e) => { 
+                                                                  e.stopPropagation(); 
+                                                                  setIsDuplicatePopoverOpen(false); 
+                                                                  setDuplicatingTierId(null); 
+                                                              }} 
+                                                              title="Close"
+                                                          >
+                                                              <CancelIcon className="h-4 w-4" />
+                                                          </Button>
+                                                      </div>
                                                       {/* Input for New Copies */}
                                                       <div className="space-y-1">
                                                           <Label htmlFor="new-tier-count" className="font-medium px-1">Create New Copies</Label>

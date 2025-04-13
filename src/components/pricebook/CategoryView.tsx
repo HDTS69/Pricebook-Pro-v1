@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/Input';
 import { 
   Plus, 
   Pencil, 
+  X,
 } from 'lucide-react';
 import { Service } from '@/lib/services';
 import { Tier } from '@/types/quote';
@@ -194,6 +195,13 @@ export function CategoryView({
     }
   }, [checkedTiers, onAddToQuote, serviceQuantities]);
 
+  // Function to reset checked tiers when the dropdown closes
+  const handleDropdownOpenChange = useCallback((open: boolean, serviceId: string) => {
+    if (!open) {
+      setCheckedTiers(prev => ({ ...prev, [serviceId]: {} }));
+    }
+  }, []);
+
   const filteredServices = services.filter(service => 
     searchQuery === '' ||
     service.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -313,41 +321,38 @@ export function CategoryView({
                     </div>
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p>Edit & Add to Quote</p>
+                    <p>Edit Before Adding</p>
                   </TooltipContent>
                 </Tooltip>
 
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <div className={!selectedTierId ? 'cursor-not-allowed' : ''}> 
-                      <Button 
-                        variant="ghost"
-                        size="icon" 
-                        className="h-8 w-8" 
-                        onClick={() => handleQuickAdd(service.id)}
-                        disabled={!selectedTierId}
-                        style={!selectedTierId ? { pointerEvents: 'none' } : {}}
-                      >
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                    </div>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-8 w-8" 
+                      onClick={() => onQuickAddToQuote(service.id, serviceQuantities[service.id] || 1)}
+                      disabled={!selectedTierId}
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p>{selectedTierId ? `Quick Add (Qty: ${serviceQuantities[service.id] || 1}) to ${getSelectedTierName() || 'Selected'} Tier` : 'Select a tier first'}</p>
+                    <p>{selectedTierId ? `Add (Qty: ${serviceQuantities[service.id] || 1}) to Current Tier` : 'Select a tier first'}</p>
                   </TooltipContent>
                 </Tooltip>
 
-                <DropdownMenu>
+                <DropdownMenu onOpenChange={(open) => handleDropdownOpenChange(open, service.id)}>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <div className={tiers.length === 0 ? 'cursor-not-allowed' : ''}> 
+                      <div className={(tiers.length <= 1) ? 'cursor-not-allowed' : ''}> 
                         <DropdownMenuTrigger asChild>
                           <Button 
                             variant="ghost"
                             size="icon" 
                             className="h-8 w-8" 
-                            disabled={tiers.length === 0}
-                            style={tiers.length === 0 ? { pointerEvents: 'none' } : {}}
+                            disabled={tiers.length <= 1}
+                            style={(tiers.length <= 1) ? { pointerEvents: 'none' } : {}}
                           >
                             <Layers className="h-4 w-4" />
                           </Button>
@@ -355,37 +360,53 @@ export function CategoryView({
                       </div>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>{tiers.length > 0 ? `Add (Qty: ${serviceQuantities[service.id] || 1}) to Specific Tiers...` : 'No tiers available'}</p>
+                      <p>{tiers.length > 1 ? `Add (Qty: ${serviceQuantities[service.id] || 1}) to Specific Tiers...` : (tiers.length === 1 ? 'Only one tier available' : 'No tiers available')}</p>
                     </TooltipContent>
                   </Tooltip>
-                  <DropdownMenuContent align="end" className="w-56"> 
-                    {tiers.length > 0 ? (
-                      <>
-                        {tiers.map((tier) => (
-                          <DropdownMenuCheckboxItem
-                            key={tier.id}
-                            checked={checkedTiers[service.id]?.[tier.id] || false}
-                            onCheckedChange={(checked: boolean) => handleTierCheckChange(service.id, tier.id, !!checked)}
-                            onSelect={(e: Event) => e.preventDefault()}
-                          >
-                            {tier.name}
-                          </DropdownMenuCheckboxItem>
-                        ))}
-                        <DropdownMenuSeparator />
-                        <div className="p-1">
-                          <Button 
-                            size="sm" 
-                            className="w-full" 
-                            onClick={() => handleAddSelectedTiers(service.id)}
-                            disabled={!Object.values(checkedTiers[service.id] || {}).some(Boolean)}
-                          >
-                            Add to Selected ({Object.values(checkedTiers[service.id] || {}).filter(Boolean).length})
-                          </Button>
-                        </div>
-                      </>
-                    ) : (
-                      <DropdownMenuItem disabled>No tiers available</DropdownMenuItem>
-                    )}
+                  <DropdownMenuContent align="end" className="w-56 p-0">
+                    <div className="flex items-center justify-between px-2 py-1.5 border-b">
+                      <span className="font-semibold text-sm">Add to Tiers</span>
+                      <DropdownMenuItem asChild className="p-0 m-0 h-auto w-auto cursor-pointer focus:bg-transparent data-[highlighted]:bg-transparent">
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-6 w-6" 
+                          onClick={(e) => { 
+                            e.stopPropagation();
+                          }}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuItem>
+                    </div>
+                    <div className="p-1">
+                      {tiers.length > 0 ? (
+                        <>
+                          {tiers.map((tier) => (
+                            <DropdownMenuCheckboxItem
+                              key={tier.id}
+                              checked={checkedTiers[service.id]?.[tier.id] || false}
+                              onCheckedChange={(checked: boolean) => handleTierCheckChange(service.id, tier.id, !!checked)}
+                              onSelect={(e: Event) => e.preventDefault()}
+                            >
+                              {tier.name}
+                            </DropdownMenuCheckboxItem>
+                          ))}
+                          <DropdownMenuSeparator />
+                          <div className="p-1">
+                            <Button 
+                              className="w-full h-8 text-xs" 
+                              onClick={() => handleAddSelectedTiers(service.id)}
+                              disabled={Object.values(checkedTiers[service.id] || {}).filter(Boolean).length === 0}
+                            >
+                              Add to {Object.values(checkedTiers[service.id] || {}).filter(Boolean).length} tier(s)
+                            </Button>
+                          </div>
+                        </>
+                      ) : (
+                        <DropdownMenuItem disabled>No tiers available</DropdownMenuItem>
+                      )}
+                    </div>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </CardFooter>
