@@ -7,6 +7,7 @@ export interface Service {
   unit: 'fixed' | 'hourly' | 'per-meter';
   estimatedDuration?: string;
   materials?: string[];
+  isFavorite?: boolean;
 }
 
 export const services: Service[] = [
