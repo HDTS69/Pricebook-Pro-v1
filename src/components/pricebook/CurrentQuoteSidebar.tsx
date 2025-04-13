@@ -71,6 +71,7 @@ import { Switch } from "@/components/ui/Switch";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils"; // Ensure cn is imported if not already
 
 // --- Customer Details Section Component ---
 interface CustomerDetailsSectionProps {
@@ -1537,7 +1538,7 @@ export function CurrentQuoteSidebar({
 
   if (!customer) {
     return (
-      <div className="flex flex-col h-full border-l bg-background items-center justify-center p-4">
+      <div className="flex flex-col h-full border-l bg-background items-center justify-center p-4 w-64 flex-shrink-0">
         <p className="text-sm text-muted-foreground text-center">
           Select a customer first.
         </p>
@@ -1863,15 +1864,83 @@ export function CurrentQuoteSidebar({
     }
   }, [editingTierId, tierConfirmDeleteId, isDuplicatePopoverOpen, confirmingDeleteAllTiers]);
 
+  // State for sidebar width
+  const [sidebarWidth, setSidebarWidth] = useState<number>(350); // Default width
+  const isResizing = useRef<boolean>(false);
+  const sidebarRef = useRef<HTMLDivElement>(null); // Ref for the sidebar container
+
+  // Minimum and maximum width for the sidebar
+  const minWidth = 280;
+  const maxWidth = 800;
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault(); // Prevent text selection during drag
+    isResizing.current = true;
+    // Add global listeners
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.body.style.cursor = 'col-resize'; // Change cursor globally
+    document.body.style.userSelect = 'none'; // Prevent text selection globally
+  };
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (!isResizing.current || !sidebarRef.current) return;
+
+    // Calculate new width based on mouse position relative to the right edge of the viewport
+    const newWidth = window.innerWidth - e.clientX;
+
+    // Apply constraints
+    const constrainedWidth = Math.max(minWidth, Math.min(newWidth, maxWidth));
+    
+    setSidebarWidth(constrainedWidth);
+
+  }, [minWidth, maxWidth]); // Dependencies
+
+  const handleMouseUp = () => {
+    if (isResizing.current) {
+      isResizing.current = false;
+      // Remove global listeners
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = ''; // Reset cursor
+      document.body.style.userSelect = ''; // Reset user selection
+    }
+  };
+  
+  // Cleanup listeners on unmount
+  useEffect(() => {
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = ''; // Ensure cursor is reset on unmount
+      document.body.style.userSelect = '';
+    };
+  }, [handleMouseMove]); // Dependency
+
   return (
-    <div className="flex flex-col h-full border-l bg-background">
-      <div className="p-4 border-b flex justify-between items-center flex-shrink-0">
-        <h2 className="text-lg font-semibold">Quote Details</h2>
+    // Main container: Apply dynamic width, ref, and change background back to bg-card
+    <div 
+      ref={sidebarRef}
+      className="flex flex-col h-full border-l bg-card relative flex-shrink-0" // Changed bg-background to bg-card
+      style={{ width: `${sidebarWidth}px` }}
+    >
+      {/* Resize Handle */}
+      <div 
+        onMouseDown={handleMouseDown}
+        className="absolute top-0 left-0 w-1.5 h-full cursor-col-resize bg-transparent hover:bg-border/50 transition-colors duration-200 z-10"
+        title="Drag to resize"
+      />
+
+      {/* Sidebar Header - Ensure it uses bg-card to match */}
+      <div className="p-4 border-b flex justify-between items-center flex-shrink-0 relative z-0 bg-card">
+        <h2 className="text-lg font-semibold truncate pr-2">Quote Details</h2>
+        {/* Add action buttons here if needed */}
       </div>
 
+      {/* Scrollable Content Area */}
       <ScrollArea className="flex-grow">
         <div className="p-4 pr-6 space-y-6 min-w-0 overflow-hidden">
-          {/* Customer Section - Replaced with new component */}
+          {/* Customer Section */}
           <CustomerDetailsSection 
             customer={customer}
             allCustomers={allCustomers}
@@ -1879,7 +1948,7 @@ export function CurrentQuoteSidebar({
             onCustomerSelect={onCustomerSelect}
           />
 
-          {/* Quote Dropdown Section - Replaced with new component */}
+          {/* Quote Dropdown Section */}
           <QuoteDropdownSection 
             customerQuotes={customerQuotes}
             currentQuote={currentQuote}
@@ -2101,7 +2170,7 @@ export function CurrentQuoteSidebar({
 
           <hr className="my-3 border-border/50" />
 
-          {/* Tasks Section - Replaced with QuoteTasksList */}
+          {/* Tasks Section */}
           <section className="/*px-4*/ pt-0">
             <div className="flex justify-between items-center mb-2">
               <h3 className="text-sm font-semibold flex items-center"><List className="h-4 w-4 mr-2" /> Tasks</h3>
@@ -2132,7 +2201,7 @@ export function CurrentQuoteSidebar({
           {/* Separator */}
           <Separator />
 
-          {/* Pricing Section - Uses QuotePricingDetails */}
+          {/* Pricing Section */}
           <QuotePricingDetails 
              // Pass necessary props, including helper functions if needed
              currentQuote={currentQuote}
@@ -2150,138 +2219,138 @@ export function CurrentQuoteSidebar({
         </div>
       </ScrollArea>
 
-      <div className="p-4 border-t bg-background space-y-2 flex-shrink-0">
-        <Button variant="secondary" className="w-full" onClick={onPreviewQuote} disabled={!currentQuote}><Eye className="mr-2 h-4 w-4" /> Preview Quote</Button>
-        <DropdownMenu
-            onOpenChange={(open: boolean) => {
-                if (open && currentQuote) {
-                    setIsEditingSendEmail(false); setIsEditingSendSms(false);
-                    setTempSendEmail(customer?.email || ""); setTempSendSms(customer?.phone || "");
-                    setDisabledEmailSendClicks(0); setDisabledSmsSendClicks(0);
-                    setIsEditingSendEmail(false); setIsEditingSendSms(false);
-                    const initialSelection = customerQuotes.length === 1 ? [customerQuotes[0].id] : (customerQuotes.length > 1 ? [currentQuote.id] : []);
-                    setQuotesToSendIds(initialSelection);
-                }
-            }}
-        >
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="w-full" disabled={!canSend || !currentQuote} title={!currentQuote ? 'No quote selected' : isQuoteSentOrAccepted ? `Quote already ${currentQuote.status}` : (!hasEmail && !hasPhone ? "No customer email/phone" : "Send Quote")}><Send className="mr-2 h-4 w-4" /> Send Quote</Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-72" align="end">
-            {customerQuotes.length > 1 && (
-              <>
-                <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Select Quotes to Send</div>
-                <ScrollArea className="max-h-36">
-                  {customerQuotes.map(q => {
-                    const handleCheckedChange = (checked: boolean | 'indeterminate'): void => {
-                      const quoteId = q.id;
-                      setQuotesToSendIds(prev => checked === true ? [...prev, quoteId] : prev.filter(id => id !== quoteId));
-                    };
-
-                    return (
-                      <DropdownMenuItem key={q.id} className="flex items-center gap-2 pr-2 pl-2" onSelect={(e: Event) => e.preventDefault()}>
-                        <Checkbox 
-                          id={`send-quote-${q.id}`} 
-                          checked={quotesToSendIds.includes(q.id)} 
-                          onCheckedChange={handleCheckedChange}
-                          className="shrink-0"
-                        />
-                        <label htmlFor={`send-quote-${q.id}`} className="text-xs cursor-pointer flex-grow truncate" title={`${q.quoteNumber} (${q.status}) - ${formatCurrency(q.totalPrice)}`}>{q.quoteNumber} ({q.status}) - {formatCurrency(q.totalPrice)}</label>
-                      </DropdownMenuItem>
-                    );
-                  })}
-                </ScrollArea>
-                <DropdownMenuSeparator className="my-1"/>
-              </>
-            )}
-            {hasEmail && (
-              <DropdownMenuItem onSelect={(e: Event) => {
-                if ((e.target as HTMLElement).closest('button, input')) e.preventDefault();
-                else if (quotesToSendIds.length === 0) {
-                  const newClickCount = disabledEmailSendClicks + 1; setDisabledEmailSendClicks(newClickCount);
-                  if (newClickCount > 2) { setIsEditingSendEmail(true); setTimeout(() => setIsEditingSendEmail(false), 2500); setDisabledEmailSendClicks(0); }
-                  e.preventDefault();
-                } else {
-                  const finalEmail = isEditingSendEmail ? tempSendEmail : customer.email;
-                  const quotes = customerQuotes.filter(q => quotesToSendIds.includes(q.id));
-                  console.log(`Action: Send ${quotes.length} quote(s) [${quotes.map(q => q.quoteNumber).join(', ')}] via Email to: ${finalEmail}`);
-                  setIsEditingSendEmail(false); setQuotesToSendIds([]);
-                }
-              }} className="cursor-pointer flex justify-between items-center">
-                {isEditingSendEmail ? (
-                  <div className="flex items-center gap-1 w-full">
-                    <Mail className="mr-1 h-4 w-4 shrink-0" />
-                    <Input type="email" value={tempSendEmail} onChange={(e) => setTempSendEmail(e.target.value)} onKeyDown={(e: React.KeyboardEvent) => {
-                      if (e.key === 'Enter') {
-                        if (quotesToSendIds.length === 0) {
-                          const newClickCount = disabledEmailSendClicks + 1; setDisabledEmailSendClicks(newClickCount);
-                          if (newClickCount > 2) { setIsEditingSendEmail(true); setTimeout(() => setIsEditingSendEmail(false), 2500); setDisabledEmailSendClicks(0); }
-                          e.preventDefault(); return;
-                        }
-                        console.log('Action: Send via Email to (Edited): ', tempSendEmail); setIsEditingSendEmail(false); setQuotesToSendIds([]);
-                      } else if (e.key === 'Escape') { setIsEditingSendEmail(false); setTempSendEmail(customer.email || ""); }
-                    }} className="h-6 text-xs flex-grow" />
-                    <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={(e: React.MouseEvent) => { e.stopPropagation(); setIsEditingSendEmail(false); setTempSendEmail(customer.email || ""); }} title="Cancel Edit"><CancelIcon className="h-3 w-3"/></Button>
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex items-center overflow-hidden">
-                      <Mail className="mr-2 h-4 w-4 shrink-0" />
-                      {/* Remove Tooltip */} 
-                      <span className="truncate cursor-default" title={customer.email ?? undefined}>{customer.email}</span>
-                    </div>
-                    <Button variant="ghost" size="icon" className="h-5 w-5 ml-2 shrink-0" onClick={(e: React.MouseEvent) => { e.stopPropagation(); setTempSendEmail(customer.email || ""); setIsEditingSendEmail(true); }} title="Edit Email"><Pencil className="h-3 w-3" /></Button>
-                  </>
-                )}
-              </DropdownMenuItem>
-            )}
-            {hasPhone && (
-              <DropdownMenuItem onSelect={(e: Event) => {
-                if ((e.target as HTMLElement).closest('button, input')) e.preventDefault();
-                else if (quotesToSendIds.length === 0) {
-                  const newClickCount = disabledSmsSendClicks + 1; setDisabledSmsSendClicks(newClickCount);
-                  if (newClickCount > 2) { setIsEditingSendSms(true); setTimeout(() => setIsEditingSendSms(false), 2500); setDisabledSmsSendClicks(0); }
-                  e.preventDefault();
-                } else {
-                  const finalSms = isEditingSendSms ? tempSendSms : customer.phone;
-                  const quotes = customerQuotes.filter(q => quotesToSendIds.includes(q.id));
-                  console.log(`Action: Send ${quotes.length} quote(s) [${quotes.map(q => q.quoteNumber).join(', ')}] via SMS to: ${finalSms}`);
-                  setIsEditingSendSms(false); setQuotesToSendIds([]);
-                }
-              }} className="cursor-pointer flex justify-between items-center">
-                {isEditingSendSms ? (
-                  <div className="flex items-center gap-1 w-full">
-                    <Smartphone className="mr-1 h-4 w-4 shrink-0" />
-                    <Input type="tel" value={tempSendSms} onChange={(e) => setTempSendSms(e.target.value)} onKeyDown={(e: React.KeyboardEvent) => {
-                      if (e.key === 'Enter') {
-                        if (quotesToSendIds.length === 0) {
-                          const newClickCount = disabledSmsSendClicks + 1; setDisabledSmsSendClicks(newClickCount);
-                          if (newClickCount > 2) { setIsEditingSendSms(true); setTimeout(() => setIsEditingSendSms(false), 2500); setDisabledSmsSendClicks(0); }
-                          e.preventDefault(); return;
-                        }
-                        console.log('Action: Send via SMS to (Edited): ', tempSendSms); setIsEditingSendSms(false); setQuotesToSendIds([]);
-                      } else if (e.key === 'Escape') { setIsEditingSendSms(false); setTempSendSms(customer.phone || ""); }
-                    }} className="h-6 text-xs flex-grow" />
-                    <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={(e: React.MouseEvent) => { e.stopPropagation(); setIsEditingSendSms(false); setTempSendSms(customer.phone || ""); }} title="Cancel Edit"><CancelIcon className="h-3 w-3"/></Button>
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex items-center overflow-hidden">
-                      <Smartphone className="mr-2 h-4 w-4 shrink-0" />
-                      {/* Remove Tooltip */} 
-                      <span className="truncate cursor-default" title={customer.phone ?? undefined}>{customer.phone}</span>
-                    </div>
-                    <Button variant="ghost" size="icon" className="h-5 w-5 ml-2 shrink-0" onClick={(e: React.MouseEvent) => { e.stopPropagation(); setTempSendSms(customer.phone || ""); setIsEditingSendSms(true); }} title="Edit Phone"><Pencil className="h-3 w-3" /></Button>
-                  </>
-                )}
-              </DropdownMenuItem>
-            )}
-            {!hasEmail && !hasPhone && (<DropdownMenuItem disabled className="text-xs text-muted-foreground italic">No customer email or phone.</DropdownMenuItem>)}
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <Button variant="default" className="w-full bg-green-600 hover:bg-green-700 text-white" onClick={() => currentQuote && console.log('Accept Quote Clicked - ID:', currentQuote.id)} disabled={!currentQuote || currentQuote.status !== 'Sent'} title={!currentQuote ? 'No quote selected' : currentQuote.status !== 'Sent' ? 'Quote must be Sent to be Accepted' : 'Accept Quote'}><CheckCircle className="mr-2 h-4 w-4" /> Accept Quote</Button>
+      {/* Footer Area - Ensure it uses bg-card */}
+      <div className="p-4 border-t bg-card space-y-2 flex-shrink-0">
+         <Button variant="secondary" className="w-full" onClick={onPreviewQuote} disabled={!currentQuote}><Eye className="mr-2 h-4 w-4" /> Preview Quote</Button>
+         <DropdownMenu
+             onOpenChange={(open: boolean) => {
+                 if (open && currentQuote) {
+                     setIsEditingSendEmail(false); setIsEditingSendSms(false);
+                     setTempSendEmail(customer?.email || ""); setTempSendSms(customer?.phone || "");
+                     setDisabledEmailSendClicks(0); setDisabledSmsSendClicks(0);
+                     setIsEditingSendEmail(false); setIsEditingSendSms(false);
+                     const initialSelection = customerQuotes.length === 1 ? [customerQuotes[0].id] : (customerQuotes.length > 1 ? [currentQuote.id] : []);
+                     setQuotesToSendIds(initialSelection);
+                 }
+             }}
+         >
+           <DropdownMenuTrigger asChild>
+             <Button variant="outline" className="w-full" disabled={!canSend || !currentQuote} title={!currentQuote ? 'No quote selected' : isQuoteSentOrAccepted ? `Quote already ${currentQuote.status}` : (!hasEmail && !hasPhone ? "No customer email/phone" : "Send Quote")}><Send className="mr-2 h-4 w-4" /> Send Quote</Button>
+           </DropdownMenuTrigger>
+           <DropdownMenuContent className="w-72" align="end">
+             {customerQuotes.length > 1 && (
+               <>
+                 <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Select Quotes to Send</div>
+                 <ScrollArea className="max-h-36">
+                   {customerQuotes.map(q => {
+                     const handleCheckedChange = (checked: boolean | 'indeterminate'): void => {
+                       const quoteId = q.id;
+                       setQuotesToSendIds(prev => checked === true ? [...prev, quoteId] : prev.filter(id => id !== quoteId));
+                     };
+ 
+                     return (
+                       <DropdownMenuItem key={q.id} className="flex items-center gap-2 pr-2 pl-2" onSelect={(e: Event) => e.preventDefault()}>
+                         <Checkbox 
+                           id={`send-quote-${q.id}`} 
+                           checked={quotesToSendIds.includes(q.id)} 
+                           onCheckedChange={handleCheckedChange}
+                           className="shrink-0"
+                         />
+                         <label htmlFor={`send-quote-${q.id}`} className="text-xs cursor-pointer flex-grow truncate" title={`${q.quoteNumber} (${q.status}) - ${formatCurrency(q.totalPrice)}`}>{q.quoteNumber} ({q.status}) - {formatCurrency(q.totalPrice)}</label>
+                       </DropdownMenuItem>
+                     );
+                   })}
+                 </ScrollArea>
+                 <DropdownMenuSeparator className="my-1"/>
+               </>
+             )}
+             {hasEmail && (
+               <DropdownMenuItem onSelect={(e: Event) => {
+                 if ((e.target as HTMLElement).closest('button, input')) e.preventDefault();
+                 else if (quotesToSendIds.length === 0) {
+                   const newClickCount = disabledEmailSendClicks + 1; setDisabledEmailSendClicks(newClickCount);
+                   if (newClickCount > 2) { setIsEditingSendEmail(true); setTimeout(() => setIsEditingSendEmail(false), 2500); setDisabledEmailSendClicks(0); }
+                   e.preventDefault();
+                 } else {
+                   const finalEmail = isEditingSendEmail ? tempSendEmail : customer.email;
+                   const quotes = customerQuotes.filter(q => quotesToSendIds.includes(q.id));
+                   console.log(`Action: Send ${quotes.length} quote(s) [${quotes.map(q => q.quoteNumber).join(', ')}] via Email to: ${finalEmail}`);
+                   setIsEditingSendEmail(false); setQuotesToSendIds([]);
+                 }
+               }} className="cursor-pointer flex justify-between items-center">
+                 {isEditingSendEmail ? (
+                   <div className="flex items-center gap-1 w-full">
+                     <Mail className="mr-1 h-4 w-4 shrink-0" />
+                     <Input type="email" value={tempSendEmail} onChange={(e) => setTempSendEmail(e.target.value)} onKeyDown={(e: React.KeyboardEvent) => {
+                       if (e.key === 'Enter') {
+                         if (quotesToSendIds.length === 0) {
+                           const newClickCount = disabledEmailSendClicks + 1; setDisabledEmailSendClicks(newClickCount);
+                           if (newClickCount > 2) { setIsEditingSendEmail(true); setTimeout(() => setIsEditingSendEmail(false), 2500); setDisabledEmailSendClicks(0); }
+                           e.preventDefault(); return;
+                         }
+                         console.log('Action: Send via Email to (Edited): ', tempSendEmail); setIsEditingSendEmail(false); setQuotesToSendIds([]);
+                       } else if (e.key === 'Escape') { setIsEditingSendEmail(false); setTempSendEmail(customer.email || ""); }
+                     }} className="h-6 text-xs flex-grow" />
+                     <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={(e: React.MouseEvent) => { e.stopPropagation(); setIsEditingSendEmail(false); setTempSendEmail(customer.email || ""); }} title="Cancel Edit"><CancelIcon className="h-3 w-3"/></Button>
+                   </div>
+                 ) : (
+                   <>
+                     <div className="flex items-center overflow-hidden">
+                       <Mail className="mr-2 h-4 w-4 shrink-0" />
+                       <span className="truncate cursor-default" title={customer.email ?? undefined}>{customer.email}</span>
+                     </div>
+                     <Button variant="ghost" size="icon" className="h-5 w-5 ml-2 shrink-0" onClick={(e: React.MouseEvent) => { e.stopPropagation(); setTempSendEmail(customer.email || ""); setIsEditingSendEmail(true); }} title="Edit Email"><Pencil className="h-3 w-3" /></Button>
+                   </>
+                 )}
+               </DropdownMenuItem>
+             )}
+             {hasPhone && (
+               <DropdownMenuItem onSelect={(e: Event) => {
+                 if ((e.target as HTMLElement).closest('button, input')) e.preventDefault();
+                 else if (quotesToSendIds.length === 0) {
+                   const newClickCount = disabledSmsSendClicks + 1; setDisabledSmsSendClicks(newClickCount);
+                   if (newClickCount > 2) { setIsEditingSendSms(true); setTimeout(() => setIsEditingSendSms(false), 2500); setDisabledSmsSendClicks(0); }
+                   e.preventDefault();
+                 } else {
+                   const finalSms = isEditingSendSms ? tempSendSms : customer.phone;
+                   const quotes = customerQuotes.filter(q => quotesToSendIds.includes(q.id));
+                   console.log(`Action: Send ${quotes.length} quote(s) [${quotes.map(q => q.quoteNumber).join(', ')}] via SMS to: ${finalSms}`);
+                   setIsEditingSendSms(false); setQuotesToSendIds([]);
+                 }
+               }} className="cursor-pointer flex justify-between items-center">
+                 {isEditingSendSms ? (
+                   <div className="flex items-center gap-1 w-full">
+                     <Smartphone className="mr-1 h-4 w-4 shrink-0" />
+                     <Input type="tel" value={tempSendSms} onChange={(e) => setTempSendSms(e.target.value)} onKeyDown={(e: React.KeyboardEvent) => {
+                       if (e.key === 'Enter') {
+                         if (quotesToSendIds.length === 0) {
+                           const newClickCount = disabledSmsSendClicks + 1; setDisabledSmsSendClicks(newClickCount);
+                           if (newClickCount > 2) { setIsEditingSendSms(true); setTimeout(() => setIsEditingSendSms(false), 2500); setDisabledSmsSendClicks(0); }
+                           e.preventDefault(); return;
+                         }
+                         console.log('Action: Send via SMS to (Edited): ', tempSendSms); setIsEditingSendSms(false); setQuotesToSendIds([]);
+                       } else if (e.key === 'Escape') { setIsEditingSendSms(false); setTempSendSms(customer.phone || ""); }
+                     }} className="h-6 text-xs flex-grow" />
+                     <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={(e: React.MouseEvent) => { e.stopPropagation(); setIsEditingSendSms(false); setTempSendSms(customer.phone || ""); }} title="Cancel Edit"><CancelIcon className="h-3 w-3"/></Button>
+                   </div>
+                 ) : (
+                   <>
+                     <div className="flex items-center overflow-hidden">
+                       <Smartphone className="mr-2 h-4 w-4 shrink-0" />
+                       <span className="truncate cursor-default" title={customer.phone ?? undefined}>{customer.phone}</span>
+                     </div>
+                     <Button variant="ghost" size="icon" className="h-5 w-5 ml-2 shrink-0" onClick={(e: React.MouseEvent) => { e.stopPropagation(); setTempSendSms(customer.phone || ""); setIsEditingSendSms(true); }} title="Edit Phone"><Pencil className="h-3 w-3" /></Button>
+                   </>
+                 )}
+               </DropdownMenuItem>
+             )}
+             {!hasEmail && !hasPhone && (<DropdownMenuItem disabled className="text-xs text-muted-foreground italic">No customer email or phone.</DropdownMenuItem>)}
+           </DropdownMenuContent>
+         </DropdownMenu>
+         <Button variant="default" className="w-full bg-green-600 hover:bg-green-700 text-white" onClick={() => currentQuote && console.log('Accept Quote Clicked - ID:', currentQuote.id)} disabled={!currentQuote || currentQuote.status !== 'Sent'} title={!currentQuote ? 'No quote selected' : currentQuote.status !== 'Sent' ? 'Quote must be Sent to be Accepted' : 'Accept Quote'}><CheckCircle className="mr-2 h-4 w-4" /> Accept Quote</Button>
       </div>
 
+      {/* Dialogs (Re-added) */}
       {isEditDialogOpen && editingTaskDetails && (
         <EditTaskDialog
           isOpen={isEditDialogOpen}
@@ -2290,16 +2359,16 @@ export function CurrentQuoteSidebar({
           onUpdateTask={onUpdateTask}
         />
       )}
-      {isEditAllTasksDialogOpen && currentQuote && selectedTierId && editingAllTasksTierId && ( // Added check for editingAllTasksTierId
+      {isEditAllTasksDialogOpen && currentQuote && selectedTierId && editingAllTasksTierId && (
         <EditAllTasksDialog
           isOpen={isEditAllTasksDialogOpen}
           onOpenChange={setIsEditAllTasksDialogOpen}
-          tierId={editingAllTasksTierId} // Use state variable
-          tierName={getTierName(editingAllTasksTierId)} // Use state variable
-          tasks={reorderableTasks} // Pass current tasks for the selected tier
+          tierId={editingAllTasksTierId}
+          tierName={getTierName(editingAllTasksTierId)}
+          tasks={reorderableTasks}
           onUpdateAllTasks={(updatedTasks: QuoteTask[]) => { 
-            if(editingAllTasksTierId) { // Ensure ID is present
-                onUpdateAllTasks(editingAllTasksTierId, updatedTasks); // Use the correct tier ID
+            if(editingAllTasksTierId) {
+                onUpdateAllTasks(editingAllTasksTierId, updatedTasks);
             }
          }}
         />

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import {
@@ -30,25 +30,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/Select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/Tooltip';
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
-import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { ThemeToggle } from '@/components/ui/ThemeToggle'; // Added ThemeToggle import
 
 // --- NEW IMPORTS ---
 import { CurrentQuoteSidebar } from '@/components/pricebook/CurrentQuoteSidebar';
-import { Quote, Customer, Tier, QuoteTask, Addon, Address } from '@/types/quote';
+import { Quote, Customer, Tier, QuoteTask } from '@/types/quote';
 import { v4 as uuidv4 } from 'uuid';
 import { useSupabaseClient } from '@supabase/auth-helpers-react';
 import { Session } from '@supabase/auth-helpers-react';
 
 // --- Define Default Tier Constant ---
-const DEFAULT_TIER: Tier = {
-  id: 'tier-bronze',
-  name: 'Bronze',
-  multiplier: 1.0,
-  warranty: "Standard",
-  perks: [],
-};
 const CUSTOM_CATEGORY_NAME = "Custom Tasks"; // Define constant for custom category
 
 // --- Mock Data (Replace with actual data fetching/management later) ---
@@ -282,9 +273,7 @@ function AddCustomTaskDialog({
   onOpenChange, 
   availableTiers, 
   currentQuoteSelectedTierId,
-  onAddCustomTask,
-  onSaveTaskToLibrary // Receive the prop
-}: AddCustomTaskDialogProps) { // No need for intersection type here
+  onAddCustomTask}: AddCustomTaskDialogProps) { // No need for intersection type here
   const [taskName, setTaskName] = useState("");
   const [taskDescription, setTaskDescription] = useState("");
   const [taskPrice, setTaskPrice] = useState("");
@@ -340,28 +329,6 @@ function AddCustomTaskDialog({
   };
 
   // Handler for saving to library AND adding to quote (currently commented out in JSX)
-  const handleSaveToLibraryAndQuote = () => {
-    const price = parseFloat(taskPrice);
-    if (taskName.trim() && !isNaN(price) && selectedTierId) {
-      const newTask: QuoteTask = {
-        taskId: `library-${uuidv4()}`, // Use library prefix? Or make it consistent
-        name: taskName.trim(),
-        description: taskDescription.trim(),
-        basePrice: price,
-        category: CUSTOM_CATEGORY_NAME,
-        addons: [],
-        quantity: 1,
-      };
-      // 1. Save to library (call parent function)
-      onSaveTaskToLibrary(newTask, selectedTierId);
-      // 2. Add to current quote
-      onAddCustomTask(newTask, selectedTierId); // Call the parent's handler
-      // 3. Close and reset
-      closeAndReset(); 
-    } else {
-      alert("Please enter a valid task name and price.");
-    }
-  };
 
   // Handle image upload click
   const handleImageButtonClick = () => {
@@ -625,93 +592,6 @@ export function PricebookPage() {
   // --- Callback Functions ---
 
   // UPDATED: Now increments quantity if the task already exists in the tier.
-  const handleAddTaskToQuote = useCallback((task: Service | QuoteTask) => {
-    if (!currentQuoteId) {
-      console.warn("Cannot add task: No current quote selected.");
-      return;
-    }
-    setCustomerQuotes((prevQuotes: Quote[]): Quote[] => // Add type for prevQuotes
-      prevQuotes.map((quote: Quote): Quote => { // Add type for quote
-        if (quote.id === currentQuoteId && quote.selectedTierId) {
-          const selectedTierId = quote.selectedTierId;
-          const currentTasks: QuoteTask[] = quote.tierTasks[selectedTierId] || []; // Add type
-          let updatedTasks: QuoteTask[] = [...currentTasks]; // Start with a copy
-          let taskFoundAndUpdated = false;
-
-          // Determine if the input is a Service or a QuoteTask
-          const isService = 'price' in task && !('taskId' in task);
-
-          if (isService) {
-            // --- Adding a Service ---
-            const serviceToAdd = task as Service;
-            updatedTasks = currentTasks.map((existingTask: QuoteTask): QuoteTask => { // Add type for existingTask
-              if (existingTask.originalServiceId === serviceToAdd.id) {
-                taskFoundAndUpdated = true;
-                console.log(` -> Found existing task (from Service ID ${serviceToAdd.id}), incrementing quantity.`);
-                return { ...existingTask, quantity: (existingTask.quantity || 1) + 1 };
-              }
-              return existingTask;
-            });
-
-            if (!taskFoundAndUpdated) {
-              console.log(` -> Service task "${serviceToAdd.name}" not found in tier ${selectedTierId}, adding as new.`);
-              const newTask: QuoteTask = {
-                taskId: `task-${uuidv4()}`,
-                originalServiceId: serviceToAdd.id,
-                name: serviceToAdd.name,
-                description: serviceToAdd.description,
-                basePrice: serviceToAdd.price,
-                quantity: 1,
-                addons: [],
-                category: serviceToAdd.categoryId,
-              };
-              updatedTasks = [...updatedTasks, newTask];
-            }
-          } else {
-            // --- Adding a QuoteTask ---
-            const quoteTaskToAdd = task as QuoteTask;
-            // Important: Check if the task being added *already exists* by taskId
-            const existingIndex = updatedTasks.findIndex((et: QuoteTask) => et.taskId === quoteTaskToAdd.taskId); // Add type
-
-            if (existingIndex !== -1) {
-               // Task already exists, increment its quantity
-               taskFoundAndUpdated = true;
-               console.log(` -> Found existing QuoteTask (ID ${quoteTaskToAdd.taskId}), incrementing quantity.`);
-               // Ensure quantities are numbers before adding
-               const existingQuantity = Number(updatedTasks[existingIndex].quantity) || 1;
-               const addingQuantity = Number(quoteTaskToAdd.quantity) || 1;
-               updatedTasks[existingIndex] = {
-                   ...updatedTasks[existingIndex],
-                   quantity: existingQuantity + addingQuantity
-               };
-            } else {
-               // Task does not exist, add it as new
-               console.log(` -> QuoteTask "${quoteTaskToAdd.name}" (ID: ${quoteTaskToAdd.taskId}) not found in tier ${selectedTierId}, adding as new.`);
-               // Ensure quantity is set, defaulting to 1
-               updatedTasks = [...updatedTasks, { ...quoteTaskToAdd, quantity: Number(quoteTaskToAdd.quantity) || 1 }];
-            }
-          }
-
-          // Create the updated quote object
-          const updatedQuote = {
-            ...quote,
-            tierTasks: {
-              ...quote.tierTasks,
-              [selectedTierId]: updatedTasks,
-            },
-            updatedAt: new Date().toISOString(),
-          };
-
-          // Recalculate the total price
-          updatedQuote.totalPrice = recalculateQuoteTotalForSelectedTier(updatedQuote);
-
-          console.log(`Quote ${quote.id} updated. New total for tier ${selectedTierId}: ${updatedQuote.totalPrice}`);
-          return updatedQuote;
-        }
-        return quote;
-      })
-    );
-  }, [currentQuoteId]); // Dependency remains currentQuoteId
 
   // Handler for adding a custom task (from dialog)
   const handleAddCustomTask = useCallback((newTask: QuoteTask, tierId: string) => {
@@ -1473,6 +1353,56 @@ export function PricebookPage() {
     }
   }, [selectedCategory, allServices]); // Depend on allServices now
 
+  // State for Category Sidebar Width
+  const [categorySidebarWidth, setCategorySidebarWidth] = useState<number>(256); // Default width (w-64)
+  const isCategoryResizing = useRef<boolean>(false);
+  const categorySidebarRef = useRef<HTMLDivElement>(null);
+
+  // Min/Max Width for Category Sidebar
+  const minCategoryWidth = 180;
+  const maxCategoryWidth = 500;
+
+  // Mouse handlers for Category Sidebar Resizing
+  const handleCategoryMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    isCategoryResizing.current = true;
+    document.addEventListener('mousemove', handleCategoryMouseMove);
+    document.addEventListener('mouseup', handleCategoryMouseUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
+
+  const handleCategoryMouseMove = useCallback((e: MouseEvent) => {
+    if (!isCategoryResizing.current || !categorySidebarRef.current) return;
+    
+    // Calculate new width based on mouse position relative to the *left* edge of the viewport
+    // This assumes the sidebar is docked left
+    const newWidth = e.clientX;
+    
+    // Apply constraints
+    const constrainedWidth = Math.max(minCategoryWidth, Math.min(newWidth, maxCategoryWidth));
+    setCategorySidebarWidth(constrainedWidth);
+  }, [minCategoryWidth, maxCategoryWidth]); // Add dependencies
+
+  const handleCategoryMouseUp = () => {
+    if (isCategoryResizing.current) {
+      isCategoryResizing.current = false;
+      document.removeEventListener('mousemove', handleCategoryMouseMove);
+      document.removeEventListener('mouseup', handleCategoryMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+  };
+
+  // Cleanup listener for Category Sidebar
+  useEffect(() => {
+    return () => {
+      document.removeEventListener('mousemove', handleCategoryMouseMove);
+      document.removeEventListener('mouseup', handleCategoryMouseUp);
+      // No need to reset cursor/userSelect here if handleMouseUp always fires
+    };
+  }, [handleCategoryMouseMove]); // Add dependency
+
   return (
       <TooltipProvider>
       <div className={`flex h-screen bg-background ${mainMenuOpen ? 'overflow-hidden' : ''}`}>
@@ -1545,104 +1475,110 @@ export function PricebookPage() {
 
               {/* Main Content Body */}
               <main className="flex-1 flex overflow-hidden">
-                  {/* --- Category Sidebar --- */}
-          <div
-            className={cn(
-              "h-full bg-card border-r transition-all duration-300 ease-in-out flex flex-col",
-                          // Keeping sidebar expanded for now
-                          "w-64" // Fixed width
-            )}
-            onMouseEnter={() => handleSidebarHover(true)}
-            onMouseLeave={() => handleSidebarHover(false)}
-          >
+                  {/* --- Category Sidebar (Resizable) --- */}
+                  <div
+                    ref={categorySidebarRef} // Add ref
+                    className={cn(
+                      "h-full bg-card border-r transition-none duration-300 ease-in-out flex flex-col relative flex-shrink-0" // Use transition-none during resize, add relative
+                    )}
+                    style={{ width: `${categorySidebarWidth}px` }} // Apply dynamic width
+                    // onMouseEnter={() => handleSidebarHover(true)} // Consider removing hover effects if resizing
+                    // onMouseLeave={() => handleSidebarHover(false)}
+                  >
+                      {/* Category Resize Handle (Right side) */}
+                      <div 
+                        onMouseDown={handleCategoryMouseDown}
+                        className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize bg-transparent hover:bg-border/50 transition-colors duration-200 z-10"
+                        title="Drag to resize"
+                      />
                       {/* Sidebar Header */}
-            <div
-              className={cn(
-                              "flex items-center border-b transition-all duration-300 ease-in-out h-[57px]", // Match header height approx
-                              "justify-between", // Use justify-between
-                              "px-4",
-                              "sticky top-0 bg-card z-10 flex-shrink-0" // Keep sticky and bg
-                          )}
+                      <div
+                        className={cn(
+                          "flex items-center border-b transition-all duration-300 ease-in-out h-[57px]", 
+                          "justify-between",
+                          "px-4",
+                          "sticky top-0 bg-card z-10 flex-shrink-0" 
+                        )}
                       >
-                    {/* Add Menu Button */}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="-ml-1 mr-2 h-8 w-8" // Adjust margin as needed
-                      onClick={() => setMainMenuOpen(true)}
-                      aria-label="Toggle Menu"
-                    >
-                      <Menu className="h-5 w-5" />
-                    </Button>
-                    {/* Categories Title */}
-                    <h2 className="font-semibold transition-opacity duration-200 text-lg flex-grow">
-                      Categories
-                    </h2>
-                    {/* Add Custom Task Button */}
-                    <Tooltip>
-                       <TooltipTrigger asChild>
-                                      <div className={!currentQuoteId ? 'cursor-not-allowed' : ''}> {/* Wrapper for disabled state tooltip */}
-                           <Button 
-                                              variant="ghost"
-                             size="icon" 
-                                      className="h-8 w-8" // Smaller icon button
-                             onClick={handleOpenCustomTaskDialog}
-                             disabled={!currentQuoteId}
-                                              style={!currentQuoteId ? { pointerEvents: 'none' } : {}} // Ensure tooltip works when disabled
-                           >
-                             <ClipboardPlus className="h-4 w-4" />
-                           </Button>
-                         </div>
-                       </TooltipTrigger>
-                                  <TooltipContent side="bottom">
-                                      <p>{currentQuoteId ? 'Add Custom Task' : 'Select a quote first'}</p>
-                       </TooltipContent>
-                     </Tooltip>
-                  </div>
+                        {/* Add Menu Button */}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="-ml-1 mr-2 h-8 w-8" // Adjust margin as needed
+                          onClick={() => setMainMenuOpen(true)}
+                          aria-label="Toggle Menu"
+                        >
+                          <Menu className="h-5 w-5" />
+                        </Button>
+                        {/* Categories Title */}
+                        <h2 className="font-semibold transition-opacity duration-200 text-lg flex-grow">
+                          Categories
+                        </h2>
+                        {/* Add Custom Task Button */}
+                        <Tooltip>
+                           <TooltipTrigger asChild>
+                                  <div className={!currentQuoteId ? 'cursor-not-allowed' : ''}> {/* Wrapper for disabled state tooltip */}
+                         <Button 
+                                            variant="ghost"
+                                   size="icon" 
+                                  className="h-8 w-8" // Smaller icon button
+                                   onClick={handleOpenCustomTaskDialog}
+                                   disabled={!currentQuoteId}
+                                  style={!currentQuoteId ? { pointerEvents: 'none' } : {}} // Ensure tooltip works when disabled
+                         >
+                                   <ClipboardPlus className="h-4 w-4" />
+                                 </Button>
+                               </div>
+                             </TooltipTrigger>
+                                <TooltipContent side="bottom">
+                                    <p>{currentQuoteId ? 'Add Custom Task' : 'Select a quote first'}</p>
+                             </TooltipContent>
+                           </Tooltip>
+                        </div>
 
-                      {/* Category List */}
-                      <ScrollArea className="flex-grow overflow-y-auto">
-               {searchQuery.trim() === '' ? (
-                              // Show all categories if not searching
-                   serviceCategories.map((category) => (
-                     <button
-                       key={category.id}
-                       className={cn(
-                         "w-full text-left p-3 hover:bg-accent transition-colors duration-150 flex items-center gap-3",
-                         selectedCategory?.id === category.id ? "bg-accent font-semibold" : "", // Use optional chaining and compare IDs
-                                          // Adjust display based on hover/open state if needed
-                       )}
-                       onClick={() => handleCategorySelect(category.id)} // Keep using handleCategorySelect here
-                     >
-                       <category.icon className={cn("h-5 w-5", category.color)} />
-                           <span className="truncate text-sm">{category.name}</span>
-                     </button>
-                   ))
-               ) : (
-                              // Show search results if searching
-                              searchResults.categories.length === 0 && searchResults.services.length === 0 ? (
-                                <div className="p-4 text-center text-sm text-muted-foreground">No results found.</div>
-                              ) : (
-                                searchResults.categories.map((category) => (
+                        {/* Category List */}
+                        <ScrollArea className="flex-grow overflow-y-auto">
+                           {searchQuery.trim() === '' ? (
+                                  // Show all categories if not searching
+                         serviceCategories.map((category) => (
                            <button
-                              key={category.id}
-                                        className={cn(
-                                            "w-full text-left p-3 hover:bg-accent transition-colors duration-150 flex items-center gap-3",
-                                            selectedCategory?.id === category.id ? "bg-accent font-semibold" : "", // Highlight if selected even in search results
-                                            " " // Always show text
-                                        )}
-                                        onClick={() => handleCategorySelect(category.id)} // Keep using handleCategorySelect here
-                                        title={category.name}
-                            >
-                              <category.icon className={cn("h-5 w-5", category.color)} />
-                                        <span className="truncate text-sm">{category.name}</span>
-                           </button>
-                                ))
-                                // Do not show matched services in the category list
-                              )
-                          )}
-                      </ScrollArea>
-                           </div>
+                             key={category.id}
+                             className={cn(
+                               "w-full text-left p-3 hover:bg-accent transition-colors duration-150 flex items-center gap-3",
+                               selectedCategory?.id === category.id ? "bg-accent font-semibold" : "", // Use optional chaining and compare IDs
+                                                // Adjust display based on hover/open state if needed
+                             )}
+                             onClick={() => handleCategorySelect(category.id)} // Keep using handleCategorySelect here
+                           >
+                                 <category.icon className={cn("h-5 w-5", category.color)} />
+                                     <span className="truncate text-sm">{category.name}</span>
+                               </button>
+                             ))
+                         ) : (
+                                  // Show search results if searching
+                                  searchResults.categories.length === 0 && searchResults.services.length === 0 ? (
+                                    <div className="p-4 text-center text-sm text-muted-foreground">No results found.</div>
+                                  ) : (
+                                    searchResults.categories.map((category) => (
+                               <button
+                                  key={category.id}
+                                            className={cn(
+                                                "w-full text-left p-3 hover:bg-accent transition-colors duration-150 flex items-center gap-3",
+                                                selectedCategory?.id === category.id ? "bg-accent font-semibold" : "", // Highlight if selected even in search results
+                                                " " // Always show text
+                                            )}
+                                            onClick={() => handleCategorySelect(category.id)} // Keep using handleCategorySelect here
+                                            title={category.name}
+                                  >
+                                    <category.icon className={cn("h-5 w-5", category.color)} />
+                                            <span className="truncate text-sm">{category.name}</span>
+                               </button>
+                                  ))
+                                  // Do not show matched services in the category list
+                                )
+                            )}
+                        </ScrollArea>
+                      </div>
                   {/* --- End Category Sidebar --- */}
 
                   {/* Price Book Services (Main Area) */}
@@ -1667,34 +1603,34 @@ export function PricebookPage() {
 
                   {/* Quote Sidebar (Right) */}
                   {isQuoteSidebarVisible && (
-              <CurrentQuoteSidebar
-                quotes={customerQuotes}
-                currentQuoteId={currentQuoteId}
-                customer={currentCustomer}
-                availableTiers={availableTiers}
-                          allCustomers={allCustomers} // Pass all customers for selection
-                onQuoteSelect={handleQuoteSelect}
-                onTierSelect={handleTierSelect}
-                          onDeleteTask={handleDeleteTask} // Pass down
-                onAddTier={handleAddTier}
-                onDeleteTier={handleDeleteTier}
-                onRenameTier={handleRenameTier}
-                onPreviewQuote={handlePreviewQuote}
-                          onUpdateCustomer={handleUpdateCustomer} // Pass down
-                          onCustomerSelect={handleCustomerSelect} // Pass down
-                          onAddQuote={handleAddQuote} // Pass down
-                          onDeleteQuote={handleDeleteQuote} // Pass down
-                          onRenameQuote={handleRenameQuote} // Pass down
-                          onUpdateTask={handleUpdateTask} // Pass down
-                          onUpdateAllTasks={handleUpdateAllTasks} // Pass down
-                          onReorderTasks={handleReorderTasks} // Pass down
-                          onDuplicateTier={handleDuplicateTier} // Pass down
-                          onClearAllTasks={handleClearAllTasks} // Pass down
-                          onDeleteAllQuotes={handleDeleteAllQuotes} // Pass down
-                          onDuplicateQuote={handleDuplicateQuote} // Pass down
-                          onDeleteAllTiers={handleDeleteAllTiers} // Pass down
-                      />
-                  )}
+                      <CurrentQuoteSidebar
+                        quotes={customerQuotes}
+                        currentQuoteId={currentQuoteId}
+                        customer={currentCustomer}
+                        availableTiers={availableTiers}
+                                  allCustomers={allCustomers} // Pass all customers for selection
+                        onQuoteSelect={handleQuoteSelect}
+                        onTierSelect={handleTierSelect}
+                                  onDeleteTask={handleDeleteTask} // Pass down
+                        onAddTier={handleAddTier}
+                        onDeleteTier={handleDeleteTier}
+                        onRenameTier={handleRenameTier}
+                        onPreviewQuote={handlePreviewQuote}
+                                  onUpdateCustomer={handleUpdateCustomer} // Pass down
+                                  onCustomerSelect={handleCustomerSelect} // Pass down
+                                  onAddQuote={handleAddQuote} // Pass down
+                                  onDeleteQuote={handleDeleteQuote} // Pass down
+                                  onRenameQuote={handleRenameQuote} // Pass down
+                                  onUpdateTask={handleUpdateTask} // Pass down
+                                  onUpdateAllTasks={handleUpdateAllTasks} // Pass down
+                                  onReorderTasks={handleReorderTasks} // Pass down
+                                  onDuplicateTier={handleDuplicateTier} // Pass down
+                                  onClearAllTasks={handleClearAllTasks} // Pass down
+                                  onDeleteAllQuotes={handleDeleteAllQuotes} // Pass down
+                                  onDuplicateQuote={handleDuplicateQuote} // Pass down
+                                  onDeleteAllTiers={handleDeleteAllTiers} // Pass down
+                              />
+                      )}
               </main>
         </div>
 
