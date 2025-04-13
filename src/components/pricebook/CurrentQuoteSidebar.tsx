@@ -310,25 +310,36 @@ interface QuoteDropdownSectionProps {
   customerQuotes: Quote[];
   currentQuote: Quote | null;
   baseQuoteNumber: string;
-  customer: Customer; // Needed for handleDeleteAll
-  onQuoteSelect: (quoteId: string) => void;
+  customer: Customer; // Added back
+  onQuoteSelect: (quoteId: string) => void; // Added back
   onAddQuote: (nextSequenceNumber: number) => void;
-  onRenameQuote: (quoteId: string, newName: string) => void;
-  onDeleteQuote: (quoteId: string) => void;
-  onDuplicateQuote: (quoteId: string) => void;
-  onDeleteAllQuotes: (customerId: string) => void;
-  formatCurrency: (amount: number) => string;
+  onRenameQuote: (quoteId: string, newName: string) => void; // Added back
+  onDeleteQuote: (quoteId: string) => void; // Added back
+  onDuplicateQuote: (quoteId: string) => void; // Added back
+  onDeleteAllQuotes: (customerId: string) => void; // Added back
+  formatCurrency: (amount: number) => string; // Added back
 }
 
 function QuoteDropdownSection({
   customerQuotes,
   currentQuote,
   baseQuoteNumber,
+  customer, // Added back
+  onQuoteSelect, // Added back
   onAddQuote,
+  onRenameQuote, // Added back
+  onDeleteQuote, // Added back
+  onDuplicateQuote, // Added back
+  onDeleteAllQuotes, // Added back
+  formatCurrency, // Added back
 }: QuoteDropdownSectionProps) {
   const [isQuoteDropdownOpen, setIsQuoteDropdownOpen] = useState(false);
   const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null);
+  const [editingQuoteName, setEditingQuoteName] = useState<string>(""); // State for inline editing
   const quoteInputRef = useRef<HTMLInputElement>(null);
+  const [quoteConfirmDeleteId, setQuoteConfirmDeleteId] = useState<string | null>(null); // State for delete confirmation
+  const [isProcessingQuoteAction, setIsProcessingQuoteAction] = useState<boolean>(false); // State for async actions
+  const [confirmingDeleteAll, setConfirmingDeleteAll] = useState<boolean>(false); // State for delete all confirmation
 
   // Effect to focus input when renaming starts
   useEffect(() => {
@@ -338,19 +349,101 @@ function QuoteDropdownSection({
   }, [editingQuoteId]);
 
   // Effect to reset confirmation states when dropdown closes or quote changes
-  useEffect(() => { 
+  useEffect(() => {
     if (!isQuoteDropdownOpen || currentQuote?.id) { // Reset if dropdown closes OR current quote changes
-        setIsQuoteDropdownOpen(false);
         setEditingQuoteId(null);
+        setEditingQuoteName("");
+        setQuoteConfirmDeleteId(null);
+        setConfirmingDeleteAll(false);
+        // Keep isQuoteDropdownOpen managed by onOpenChange
     }
   }, [isQuoteDropdownOpen, currentQuote?.id]);
 
+  const handleQuoteClick = (quoteId: string) => {
+    if (editingQuoteId === quoteId || quoteConfirmDeleteId === quoteId || isProcessingQuoteAction) return;
+    onQuoteSelect(quoteId);
+    setIsQuoteDropdownOpen(false); // Close dropdown on selection
+  };
 
+  const handleStartRenameQuote = (quote: Quote) => {
+    setEditingQuoteId(quote.id);
+    setEditingQuoteName(quote.name); // Initialize with current name
+    setQuoteConfirmDeleteId(null); // Ensure delete confirm is off
+    setConfirmingDeleteAll(false); // Ensure delete all confirm is off
+    // Keep dropdown open
+  };
 
+  const handleCancelRenameQuote = () => {
+    setEditingQuoteId(null);
+    setEditingQuoteName("");
+  };
 
+  const handleSaveRenameQuote = () => {
+    if (!editingQuoteId) return;
+    const trimmedName = editingQuoteName.trim();
+    const originalQuote = customerQuotes.find(q => q.id === editingQuoteId);
 
+    // Don't save if name is empty or unchanged
+    if (!trimmedName || !originalQuote || originalQuote.name === trimmedName) {
+      handleCancelRenameQuote();
+      return;
+    }
 
+    // Check for duplicate names (optional, depending on requirements)
+    // if (customerQuotes.some(q => q.id !== editingQuoteId && q.name.toLowerCase() === trimmedName.toLowerCase())) {
+    //   alert(`Quote name "${trimmedName}" already exists.`);
+    //   return;
+    // }
 
+    setIsProcessingQuoteAction(true);
+    onRenameQuote(editingQuoteId, trimmedName); // Call parent handler
+    setTimeout(() => { // Simulate async operation
+      setEditingQuoteId(null);
+      setEditingQuoteName("");
+      setIsProcessingQuoteAction(false);
+      // Dropdown might close automatically depending on interaction, or keep open
+    }, 300);
+  };
+
+  const handleRenameKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') {
+      handleSaveRenameQuote();
+    } else if (event.key === 'Escape') {
+      handleCancelRenameQuote();
+    }
+  };
+
+  const handleDeleteQuoteConfirmClick = (quoteId: string) => {
+    if (!quoteConfirmDeleteId || quoteConfirmDeleteId !== quoteId) return;
+    setIsProcessingQuoteAction(true);
+    onDeleteQuote(quoteId);
+    setTimeout(() => { // Simulate async
+      setQuoteConfirmDeleteId(null);
+      setIsProcessingQuoteAction(false);
+      // Dropdown might close automatically
+    }, 300);
+  };
+  
+  const handleDuplicateQuoteClick = (e: React.MouseEvent, quoteId: string) => {
+      e.stopPropagation();
+      setIsProcessingQuoteAction(true);
+      onDuplicateQuote(quoteId);
+      setTimeout(() => { // Simulate async
+          setIsProcessingQuoteAction(false);
+          // Keep dropdown open or close based on desired UX
+      }, 300);
+  };
+  
+  const handleDeleteAllQuotesConfirmClick = () => {
+      if (!confirmingDeleteAll || !customer) return;
+      setIsProcessingQuoteAction(true);
+      onDeleteAllQuotes(customer.id); // Pass customer ID
+      setTimeout(() => { // Simulate async
+          setConfirmingDeleteAll(false);
+          setIsProcessingQuoteAction(false);
+          setIsQuoteDropdownOpen(false); // Close dropdown after deleting all
+      }, 300);
+  };
 
   const handleAddNewQuote = () => {
     const currentSequenceNumbers = customerQuotes.map(q => q.sequenceNumber);
@@ -359,43 +452,137 @@ function QuoteDropdownSection({
     setIsQuoteDropdownOpen(false); // Close dropdown after adding
   };
 
+  const handleDropdownOpenChange = (open: boolean) => {
+      if (open) {
+          // Reset states when opening, except if already processing
+          if (!isProcessingQuoteAction) {
+              setEditingQuoteId(null);
+              setQuoteConfirmDeleteId(null);
+              setConfirmingDeleteAll(false); // Corrected: Use false instead of null
+          }
+      }
+      setIsQuoteDropdownOpen(open);
+  };
 
-
+  const handleDropdownCloseAutoFocus = (e: Event) => {
+    // Prevent focus-related close if editing, confirming delete, or confirming delete all
+    if (editingQuoteId || quoteConfirmDeleteId || confirmingDeleteAll) {
+      e.preventDefault();
+    }
+  };
 
   return (
     <section className="/*px-4*/">
       <Label className="text-xs text-muted-foreground block mb-1">Current Quote</Label>
-      <DropdownMenu 
-        open={isQuoteDropdownOpen} 
-        onOpenChange={(open: boolean) => {
-            if (currentQuote) {
-                setIsQuoteDropdownOpen(open);
-            } else if (open) {
-                handleAddNewQuote();
-            }
-        }} 
-        modal={false} 
+      <DropdownMenu
+        open={isQuoteDropdownOpen}
+        onOpenChange={handleDropdownOpenChange}
+        modal={false}
       >
         <DropdownMenuTrigger asChild>
-          <Button 
-            variant="outline" 
-            className="w-full h-8 text-sm justify-between font-regular" 
+          <Button
+            variant="outline"
+            className="w-full h-8 text-sm justify-between font-regular"
           >
             <span>
               {currentQuote ? (
                 <>
                   {baseQuoteNumber} / {currentQuote.sequenceNumber}
-                  {currentQuote.name !== String(currentQuote.sequenceNumber) && ` - ${currentQuote.name}`}
+                  {currentQuote.name !== String(currentQuote.sequenceNumber) && currentQuote.name && ` - ${currentQuote.name}`}
                 </>
               ) : (
-                <span>Create new quote</span> 
+                <span>Create new quote</span>
               )}
             </span>
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuPortal>
-          {/* ... DropdownMenuContent ... */}
+           <DropdownMenuContent
+               align="start"
+               sideOffset={4}
+               className="w-[--radix-dropdown-menu-trigger-width]"
+               onCloseAutoFocus={handleDropdownCloseAutoFocus}
+           >
+               {customerQuotes.map((quote) => (
+                   <div // Use div for better control over click propagation and styling
+                       key={quote.id}
+                       onClick={() => {
+                           // Only trigger select if not editing or confirming delete for this item
+                           if (editingQuoteId !== quote.id && quoteConfirmDeleteId !== quote.id) {
+                               handleQuoteClick(quote.id);
+                           }
+                       }}
+                       className={`group flex justify-between items-center text-xs px-2 py-2 cursor-pointer rounded-sm outline-none focus:bg-accent focus:text-accent-foreground hover:bg-accent hover:text-accent-foreground ${quote.id === currentQuote?.id ? 'bg-accent' : ''} ${editingQuoteId === quote.id ? 'bg-muted' : ''} ${quoteConfirmDeleteId === quote.id ? 'bg-destructive/10' : ''}`}
+                   >
+                       {/* Quote Name / Input */}
+                       <div className="flex-grow flex items-center gap-2 mr-2 overflow-hidden min-w-0">
+                           {editingQuoteId === quote.id ? (
+                               <div className="flex-grow flex items-center gap-1">
+                                   <Input ref={quoteInputRef} type="text" value={editingQuoteName} onChange={(e) => setEditingQuoteName(e.target.value)} onKeyDown={handleRenameKeyDown} onBlur={handleSaveRenameQuote} onClick={(e) => e.stopPropagation()} className="h-6 text-xs flex-grow"/>
+                                   <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={(e) => { e.stopPropagation(); handleSaveRenameQuote(); }} title="Save Name"><Check className="h-3 w-3 text-primary" /></Button>
+                                   <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={(e) => { e.stopPropagation(); handleCancelRenameQuote(); }} title="Cancel Rename"><CancelIcon className="h-3 w-3" /></Button>
+                               </div>
+                           ) : (
+                               <span className="flex-grow truncate cursor-default" title={quote.name}>
+                                   {baseQuoteNumber} / {quote.sequenceNumber} {quote.name !== String(quote.sequenceNumber) && quote.name ? ` - ${quote.name}` : ''} <span className="text-muted-foreground">({formatCurrency(quote.totalPrice)})</span>
+                               </span>
+                           )}
+                       </div>
+
+                       {/* Action Buttons */}
+                       <div className="flex items-center shrink-0">
+                           {quoteConfirmDeleteId === quote.id ? (
+                               <div className="flex items-center">
+                                   <Button variant="destructive" size="sm" className="h-6 text-xs px-2 mr-1" onClick={(e) => { e.stopPropagation(); handleDeleteQuoteConfirmClick(quote.id); }} title="Confirm Delete">Confirm?</Button>
+                                   <Button variant="ghost" size="icon" className="h-5 w-5" onClick={(e) => { e.stopPropagation(); setQuoteConfirmDeleteId(null); }} title="Cancel Delete"><CancelIcon className="h-3 w-3"/></Button>
+                               </div>
+                           ) : editingQuoteId === quote.id ? (
+                               null // No buttons while actively editing name inline
+                           ) : (
+                               <div className={`flex items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity`}>
+                                   <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={(e) => { e.stopPropagation(); handleStartRenameQuote(quote); }} title={`Rename Quote ${quote.sequenceNumber}`} disabled={editingQuoteId !== null || quoteConfirmDeleteId !== null || isProcessingQuoteAction}><Pencil className="h-4 w-4" /></Button>
+                                   <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={(e) => handleDuplicateQuoteClick(e, quote.id)} title={`Duplicate Quote ${quote.sequenceNumber}`} disabled={editingQuoteId !== null || quoteConfirmDeleteId !== null || isProcessingQuoteAction}><Copy className="h-4 w-4" /></Button>
+                                   <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:bg-destructive/10" onClick={(e) => { e.stopPropagation(); setQuoteConfirmDeleteId(quote.id); }} title={`Delete Quote ${quote.sequenceNumber}`} disabled={editingQuoteId !== null || quoteConfirmDeleteId !== null || customerQuotes.length <= 1 || isProcessingQuoteAction}><Trash2 className="h-4 w-4" /></Button>
+                               </div>
+                           )}
+                       </div>
+                   </div>
+               ))}
+
+               <DropdownMenuSeparator className="my-1" />
+
+               <DropdownMenuItem
+                   onSelect={(e: Event) => { e.preventDefault(); handleAddNewQuote(); }}
+                   className="text-xs text-muted-foreground italic cursor-pointer flex items-center"
+               >
+                  <PlusCircle className="h-4 w-4 mr-2" /> Add New Quote...
+               </DropdownMenuItem>
+
+               {customerQuotes.length > 1 && (
+                   <>
+                     <DropdownMenuSeparator className="my-1" />
+                     <DropdownMenuItem
+                         onSelect={(e: Event) => {
+                             e.preventDefault(); // Prevent dropdown from closing immediately
+                             if (confirmingDeleteAll) {
+                                 handleDeleteAllQuotesConfirmClick();
+                             } else {
+                                 setConfirmingDeleteAll(true);
+                                 // Reset other potentially conflicting states
+                                 setEditingQuoteId(null);
+                                 setQuoteConfirmDeleteId(null);
+                             }
+                         }}
+                         className={`text-xs ${confirmingDeleteAll ? 'text-destructive focus:bg-destructive focus:text-destructive-foreground' : 'text-muted-foreground focus:text-destructive focus:bg-destructive/10'} cursor-pointer flex items-center`}
+                         disabled={customerQuotes.length <= 1 || isProcessingQuoteAction} // Disable if only one quote exists or action in progress
+                         >
+                         <Trash className="h-4 w-4 mr-2" />
+                         {confirmingDeleteAll ? "Confirm Delete All?" : "Delete All Quotes..."}
+                     </DropdownMenuItem>
+                   </>
+               )}
+           </DropdownMenuContent>
         </DropdownMenuPortal>
       </DropdownMenu>
     </section>
