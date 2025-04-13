@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import { Quote, Customer, QuoteTask, Tier, Addon } from "@/types/quote";
+import { Quote, Customer, QuoteTask, Tier, Addon, Address } from "@/types/quote";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -180,14 +180,17 @@ function CustomerDetailsSection({
   const handleCustomerInputChange = (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => { 
     const { name, value } = event.target; 
     setEditableCustomer(prev => {
-      if (!prev) return null;
+      // Assuming 'prev' will always be a valid Customer object based on initialization
+      // Remove the '!prev' check
+      // if (!prev) return null; 
+
       // Check if the field belongs to the billing_address object
       if (name.startsWith('billing_address.')) {
         const addressField = name.split('.')[1] as keyof Address;
         return {
           ...prev,
           billing_address: {
-            ...(prev.billing_address || {}),
+            ...(prev.billing_address || {}), // Keep nullish coalescing for safety
             [addressField]: value
           }
         };
@@ -669,7 +672,7 @@ function QuoteDropdownSection({
                                <div className={`flex items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity`}>
                                    <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={(e) => { e.stopPropagation(); handleStartRenameQuote(quote); }} title={`Rename Quote ${quote.sequenceNumber}`} disabled={editingQuoteId !== null || quoteConfirmDeleteId !== null || isProcessingQuoteAction}><Pencil className="h-4 w-4" /></Button>
                                    <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={(e) => handleDuplicateQuoteClick(e, quote.id)} title={`Duplicate Quote ${quote.sequenceNumber}`} disabled={editingQuoteId !== null || quoteConfirmDeleteId !== null || isProcessingQuoteAction}><Copy className="h-4 w-4" /></Button>
-                                   <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:bg-destructive/10" onClick={(e) => { e.stopPropagation(); setQuoteConfirmDeleteId(quote.id); }} title={`Delete Quote ${quote.sequenceNumber}`} disabled={editingQuoteId !== null || quoteConfirmDeleteId !== null || customerQuotes.length <= 1 || isProcessingQuoteAction}><Trash2 className="h-4 w-4" /></Button>
+                                   <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:bg-destructive/10" onClick={(e) => { e.stopPropagation(); setQuoteConfirmDeleteId(quote.id); }} title={`Delete Quote ${quote.sequenceNumber}`} disabled={editingQuoteId !== null || quoteConfirmDeleteId !== null || isProcessingQuoteAction}><Trash2 className="h-4 w-4" /></Button>
                                </div>
                            )}
                        </div>
@@ -1894,7 +1897,7 @@ export function CurrentQuoteSidebar({
                                                   </div>
                                               </PopoverContent>
                                            </Popover>
-                                           <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:bg-destructive/10" onClick={(e) => handleDeleteTierButtonClick(e, tier.id)} title={`Delete ${tier.name}`} disabled={editingTierId !== null || tierConfirmDeleteId !== null || internalAvailableTiers.length <= 1 || isDuplicatePopoverOpen}><Trash2 className="h-4 w-4" /></Button>
+                                           <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:bg-destructive/10" onClick={(e) => handleDeleteTierButtonClick(e, tier.id)} title={`Delete ${tier.name}`} disabled={editingTierId !== null || tierConfirmDeleteId !== null || isDuplicatePopoverOpen}><Trash2 className="h-4 w-4" /></Button>
                                        </div>
                                    )}
                                </div>
