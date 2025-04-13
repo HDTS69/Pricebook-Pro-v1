@@ -16,30 +16,29 @@ import {
   ClipboardPlus,
   Camera,
   Sparkles,
+  PanelRightClose, // Added
+  PanelRightOpen,  // Added
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CategoryView } from '@/components/pricebook/CategoryView';
 import { DashboardMenu } from '@/components/layout/DashboardMenu';
 import { services, Service } from '@/lib/services';
 import { arrayMove } from '@dnd-kit/sortable';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/Select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/Tooltip';
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { ThemeToggle } from '@/components/ui/ThemeToggle'; // Added ThemeToggle import
 
 // --- NEW IMPORTS ---
 import { CurrentQuoteSidebar } from '@/components/pricebook/CurrentQuoteSidebar';
-import { PageHeaderActions } from '@/components/layout/PageHeaderActions';
 import { Quote, Customer, Tier, QuoteTask, Addon } from '@/types/quote';
 import { v4 as uuidv4 } from 'uuid';
-import { ActionHistoryProvider, AppHistoryState } from '@/contexts/ActionHistoryContext'; // Removed useActionHistory
-import { useUndoService } from '@/hooks/useUndoService';
-import { ActionHistoryPanel } from '@/components/pricebook/ActionHistoryPanel';
-import { useUndoRedoShortcuts } from '@/hooks/useKeyboardShortcuts';
-import { useSupabaseClient } from '@supabase/auth-helpers-react'; // Added import for Supabase
+import { useSupabaseClient } from '@supabase/auth-helpers-react';
 
 // --- Define Default Tier Constant ---
 const DEFAULT_TIER: Tier = {
@@ -57,22 +56,43 @@ const mockCustomers: Customer[] = [
     id: 'cust-1',
     name: 'John Doe Plumbing Co.',
     email: 'john.doe@example.com',
-    phone: '0412 345 678',
-    address: '123 Example St, Sydney NSW 2000',
+    phone: '02 9876 5432', // Example office phone
+    mobile_phone: '0412 345 678', // Example mobile
+    billing_address: {
+      street: '123 Example St',
+      city: 'Sydney',
+      state: 'NSW',
+      postcode: '2000',
+      country: 'Australia',
+    },
   },
   {
     id: 'cust-2',
     name: 'Jane Smith Renovations',
     email: 'jane@example.com',
-    phone: '0423 456 789',
-    address: '456 Another Ave, Melbourne VIC 3000',
+    phone: '03 8765 4321',
+    mobile_phone: '0423 456 789',
+    billing_address: {
+      street: '456 Another Ave',
+      city: 'Melbourne',
+      state: 'VIC',
+      postcode: '3000',
+      country: 'Australia',
+    },
   },
   {
     id: 'cust-3',
     name: 'Coastal Electrics Pty Ltd',
     email: 'support@coastalelectrics.com.au',
     phone: '07 5555 1234',
-    address: '789 Beach Rd, Gold Coast QLD 4217',
+    mobile_phone: '0434 567 890', // Added mobile example
+    billing_address: {
+      street: '789 Beach Rd',
+      city: 'Gold Coast',
+      state: 'QLD',
+      postcode: '4217',
+      country: 'Australia',
+    },
   },
 ];
 
@@ -110,23 +130,23 @@ const getInitialQuotesForCustomer = (customerId: string): Quote[] => {
         name: "Initial Reno Consult",
         customerId: 'cust-2',
         status: 'Sent',
-        tierTasks: { 
+        tierTasks: {
           'tier-bronze': [{
-            taskId: 'task-consult', 
-            name: 'Consultation', 
+            taskId: 'task-consult',
+            name: 'Consultation',
             description: 'Initial consultation',
-            basePrice: 150, 
+            basePrice: 150,
             addons: []
-          }], 
-          'tier-silver': [], 
-          'tier-gold': [] 
+          }],
+          'tier-silver': [],
+          'tier-gold': []
         },
         selectedTierId: 'tier-bronze',
         adjustments: [],
         totalPrice: 150,
-        createdAt: new Date(Date.now() - 86400000*2).toISOString(), 
+        createdAt: new Date(Date.now() - 86400000*2).toISOString(),
         updatedAt: new Date(Date.now() - 86400000*2).toISOString(),
-        sentAt: new Date(Date.now() - 86400000).toISOString(), 
+        sentAt: new Date(Date.now() - 86400000).toISOString(),
       }
     ];
   }
@@ -136,9 +156,9 @@ const getInitialQuotesForCustomer = (customerId: string): Quote[] => {
 
 // Define a list of potential color names for new tiers
 const TIER_COLORS: string[] = [
-  "Red", "Blue", "Green", "Yellow", "Purple", "Orange", 
-  "Pink", "Cyan", "Magenta", "Lime", "Teal", "Indigo", 
-  "Maroon", "Navy", "Olive" 
+  "Red", "Blue", "Green", "Yellow", "Purple", "Orange",
+  "Pink", "Cyan", "Magenta", "Lime", "Teal", "Indigo",
+  "Maroon", "Navy", "Olive"
   // Add more colors as needed
 ];
 
@@ -190,9 +210,9 @@ const serviceCategories: ServiceCategory[] = [
     color: 'text-red-500',
     description: 'Hot water system repairs and installations',
     subcategories: [
-      { 
-        id: 'hw-electric', 
-        name: 'Electric Systems', 
+      {
+        id: 'hw-electric',
+        name: 'Electric Systems',
         subSubcategories: [
           { id: 'hw-elec-replace', name: 'Replacement' },
           { id: 'hw-elec-repair', name: 'Repair' },
@@ -253,941 +273,661 @@ interface AddCustomTaskDialogProps {
   availableTiers: Tier[];
   currentQuoteSelectedTierId: string | null; // Pass the tier selected in the main UI as default
   onAddCustomTask: (newTask: QuoteTask, tierId: string) => void;
+  onSaveTaskToLibrary: (task: QuoteTask, tierId: string) => void; // Added prop
 }
 
-function AddCustomTaskDialog({ 
-  isOpen, 
-  onOpenChange, 
-  availableTiers, 
+function AddCustomTaskDialog({
+  isOpen,
+  onOpenChange,
+  availableTiers,
   currentQuoteSelectedTierId,
   onAddCustomTask,
-  onSaveTaskToLibrary
-}: AddCustomTaskDialogProps & { onSaveTaskToLibrary: (task: QuoteTask, tierId: string) => void }) {
-  // --- Main Dialog State ---
+  onSaveTaskToLibrary // Receive the prop
+}: AddCustomTaskDialogProps) { // No need for intersection type here
   const [taskName, setTaskName] = useState("");
-  const [taskDesc, setTaskDesc] = useState(""); // Main Description
+  const [taskDescription, setTaskDescription] = useState("");
   const [taskPrice, setTaskPrice] = useState("");
   const [selectedTierId, setSelectedTierId] = useState<string>("");
-  const [isEnhancingName, setIsEnhancingName] = useState(false); // AI Loading state for Name
-  const [isGeneratingMainDesc, setIsGeneratingMainDesc] = useState(false); // State for main description AI
-  
-  // --- Popover State ---
-  const [isLibraryPopoverOpen, setIsLibraryPopoverOpen] = useState(false);
-  const [taskTitle, setTaskTitle] = useState("");
-  const [libraryTaskDesc, setLibraryTaskDesc] = useState(""); // Popover Description
-  const [taskCode, setTaskCode] = useState("");
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>("");
-  const [selectedSubcategoryId, setSelectedSubcategoryId] = useState<string>("");
-  const [selectedSubSubcategoryId, setSelectedSubSubcategoryId] = useState<string>("");
-  const [taskImageFile, setTaskImageFile] = useState(""); 
-  const [taskConfigOption, setTaskConfigOption] = useState("");
-  const [taskPriceInclGST, setTaskPriceInclGST] = useState("");
-  const [taskTime, setTaskTime] = useState("");
-  const [taskMaterials, setTaskMaterials] = useState("");
-  const [isEnhancingTitle, setIsEnhancingTitle] = useState(false); // AI Loading state for Title
-  const [isGeneratingDesc, setIsGeneratingDesc] = useState(false); // State for popover description AI
+  // const [saveToLibrary, setSaveToLibrary] = useState<boolean>(false); // State for checkbox (currently removed)
 
-  const supabase = useSupabaseClient(); // Get Supabase client instance
+  const supabase = useSupabaseClient(); // Get Supabase client
 
-  // --- Derived State for Dropdowns ---
-  const availableSubcategories = useMemo(() => {
-    const category = serviceCategories.find(c => c.id === selectedCategoryId);
-    return category?.subcategories || [];
-  }, [selectedCategoryId]);
-
-  const availableSubSubcategories = useMemo(() => {
-    const subcategory = availableSubcategories.find(sc => sc.id === selectedSubcategoryId);
-    return subcategory?.subSubcategories || [];
-  }, [selectedSubcategoryId, availableSubcategories]);
-
-  // --- Effects ---
-  // Reset all fields when dialog closes
+  // Effect to set default tier when dialog opens
   useEffect(() => {
-    if (!isOpen) {
-        setTaskName("");
-        setTaskDesc("");
-        setTaskPrice("");
-        setSelectedTierId("");
-        setIsLibraryPopoverOpen(false); 
-        setTaskTitle("");
-        setTaskCode("");
-        setSelectedCategoryId("");
-        setSelectedSubcategoryId("");
-        setSelectedSubSubcategoryId("");
-        setLibraryTaskDesc("");
-        setTaskImageFile("");
-        setTaskConfigOption("");
-        setTaskPriceInclGST("");
-        setTaskTime("");
-        setTaskMaterials("");
-        // Reset AI states too
-        setIsEnhancingName(false);
-        setIsGeneratingMainDesc(false);
-        setIsEnhancingTitle(false);
-        setIsGeneratingDesc(false);
+    if (isOpen && availableTiers.length > 0) {
+      // Use the tier selected in the main UI if available, otherwise default to first tier
+      const defaultTier = currentQuoteSelectedTierId && availableTiers.find(t => t.id === currentQuoteSelectedTierId)
+        ? currentQuoteSelectedTierId
+        : availableTiers[0]?.id;
+      setSelectedTierId(defaultTier || "");
+    } else if (!isOpen) {
+      // Reset form when dialog closes
+      closeAndReset();
     }
-  }, [isOpen]);
-
-  // Auto-populate popover fields when it opens
-  useEffect(() => {
-    if (isLibraryPopoverOpen) {
-      setTaskTitle(taskName);
-      setLibraryTaskDesc(taskDesc);
-      setTaskPriceInclGST(taskPrice); 
-      setSelectedCategoryId("");
-      setSelectedSubcategoryId("");
-      setSelectedSubSubcategoryId("");
-    } 
-  }, [isLibraryPopoverOpen, taskName, taskDesc, taskPrice]);
-
-  // Reset sub-selections when parent category changes
-  useEffect(() => {
-    setSelectedSubcategoryId("");
-    setSelectedSubSubcategoryId("");
-  }, [selectedCategoryId]);
-
-  useEffect(() => {
-    setSelectedSubSubcategoryId("");
-  }, [selectedSubcategoryId]);
-
-  // Set default tier on open
-  useEffect(() => {
-     if (isOpen) {
-        if (currentQuoteSelectedTierId && availableTiers.some(t => t.id === currentQuoteSelectedTierId)) {
-            setSelectedTierId(currentQuoteSelectedTierId);
-        } else if (availableTiers.length > 0) {
-            setSelectedTierId(availableTiers[0].id);
-        } else {
-            setSelectedTierId("");
-        }
-     }
+    // Ensure dependency array includes all props that could affect the default selection
   }, [isOpen, availableTiers, currentQuoteSelectedTierId]);
 
-  // --- AI Placeholder Handlers ---
-  const handleEnhanceName = useCallback(async () => {
-    if (!taskName.trim() || !supabase) return; // Add check for supabase client
-
-    setIsEnhancingName(true);
-    console.log("[AI] Enhancing Name:", taskName);
-
-    try {
-      // --- Get Supabase Auth Token --- <<< ADDING THIS BLOCK BACK
-      console.log("Checking Supabase session..."); // <-- ADD LOG
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      console.log("Raw session data:", session); // <-- ADD LOG
-      console.log("Raw session error:", sessionError); // <-- ADD LOG
-
-      if (sessionError) {
-        console.error("Error fetching session:", sessionError); // <-- ADD LOG
-        throw new Error(`Supabase session error: ${sessionError.message}`);
-      }
-      if (!session) {
-        console.error("Session object is null or undefined after check."); // <-- ADD LOG
-        throw new Error('User not authenticated'); // Or handle appropriately
-      }
-      const token = session.access_token;
-      console.log("Retrieved token successfully."); // <-- ADD LOG
-      // --- End Get Supabase Auth Token ---
-
-      // Use the full Supabase function URL
-      const response = await fetch('https://ybkgvombhjchlcmbrizk.supabase.co/functions/v1/enhance-name', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`, // Ensure token is used here
-        },
-        body: JSON.stringify({ text: taskName }),
-      });
-
-      if (!response.ok) {
-        // Try to get more detailed error from response body if available
-        let errorBody = null;
-        try {
-            errorBody = await response.json();
-        } catch (e) { /* Ignore parsing error */ }
-        console.error("[AI] API Error Response Body:", errorBody);
-        throw new Error(`API Error: ${response.statusText} (Status: ${response.status}) ${errorBody?.error ? `- ${errorBody.error}` : ''}`);
-      }
-
-      const data = await response.json();
-      // Assuming the API returns { result: "enhanced name" }
-      if (data.result) {
-        setTaskName(data.result);
-      } else {
-        console.error("[AI] No result found in API response:", data);
-        // Optional: Keep the original name or show an error
-      }
-    } catch (error) {
-      console.error("[AI] Failed to enhance name:", error);
-      // Optional: Add user feedback (e.g., toast notification)
-      // Example: toast.error(`Error enhancing name: ${error.message}`);
-    } finally {
-      setIsEnhancingName(false);
-    }
-  }, [taskName, supabase]); // Ensure supabase is in dependency array
-
-  const handleGenerateMainDescription = useCallback(async () => {
-    const basis = taskName.trim();
-    if (!basis || !supabase) { // Add check for supabase client
-        console.warn("[AI] Cannot generate main description without a name or supabase client.");
-        return;
-    }
-    setIsGeneratingMainDesc(true);
-    console.log("[AI] Generating Main Description based on:", basis);
-    try {
-      // --- Get Supabase Auth Token ---
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-
-      if (sessionError) {
-        throw new Error(`Supabase session error: ${sessionError.message}`);
-      }
-      if (!session) {
-        throw new Error('User not authenticated');
-      }
-      const token = session.access_token;
-      // --- End Get Supabase Auth Token ---
-
-      // Replace with your actual API endpoint
-      const response = await fetch('https://ybkgvombhjchlcmbrizk.supabase.co/functions/v1/generate-description', { // Or use the full Supabase function URL if needed
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`, // <<<--- ADDED AUTH HEADER
-        },
-        body: JSON.stringify({ text: basis }), // Send the name as basis
-      });
-
-      if (!response.ok) {
-        let errorBody = null;
-        try { errorBody = await response.json(); } catch (e) { /* Ignore */ }
-        console.error("[AI] API Error Response Body:", errorBody);
-        throw new Error(`API Error: ${response.statusText} (Status: ${response.status}) ${errorBody?.error ? `- ${errorBody.error}` : ''}`);
-      }
-
-      const data = await response.json();
-      // Assuming the API returns { result: "generated description" }
-      if (data.result) {
-        setTaskDesc(data.result); // Update the main description state
-      } else {
-        console.error("[AI] No result found in API response for description:", data);
-        // Optional: Keep the original description or show an error
-      }
-    } catch (error) {
-      console.error("[AI] Failed to generate main description:", error);
-      // Optional: Add user feedback
-    } finally {
-      setIsGeneratingMainDesc(false);
-    }
-  }, [taskName, supabase]); // Add supabase to dependency array
-
-  const handleEnhanceTitle = useCallback(async () => {
-    if (!taskTitle.trim() || !supabase) return; // Add check for supabase client
-    setIsEnhancingTitle(true);
-    console.log("[AI] Enhancing Title:", taskTitle);
-    try {
-      // --- Get Supabase Auth Token ---
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError) throw new Error(`Supabase session error: ${sessionError.message}`);
-      if (!session) throw new Error('User not authenticated');
-      const token = session.access_token;
-      // --- End Get Supabase Auth Token ---
-
-      // Replace with your actual API endpoint (could reuse enhance-name endpoint or use enhance-title)
-      const response = await fetch('https://ybkgvombhjchlcmbrizk.supabase.co/functions/v1/enhance-title', { // Or use the full Supabase function URL if needed
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`, // <<<--- ADDED AUTH HEADER
-        },
-        body: JSON.stringify({ text: taskTitle }),
-      });
-
-      if (!response.ok) {
-        let errorBody = null;
-        try { errorBody = await response.json(); } catch (e) { /* Ignore */ }
-        console.error("[AI] API Error Response Body:", errorBody);
-        throw new Error(`API Error: ${response.statusText} (Status: ${response.status}) ${errorBody?.error ? `- ${errorBody.error}` : ''}`);
-      }
-
-      const data = await response.json();
-      if (data.result) {
-        setTaskTitle(data.result);
-      } else {
-        console.error("[AI] No result found for title enhancement:", data);
-      }
-    } catch (error) {
-      console.error("[AI] Failed to enhance title:", error);
-    } finally {
-      setIsEnhancingTitle(false);
-    }
-  }, [taskTitle, supabase]); // Add supabase to dependency array
-
-  const handleGenerateLibraryDescription = useCallback(async () => {
-    const basis = taskTitle.trim() || taskName.trim();
-    if (!basis || !supabase) { // Add check for supabase client
-        console.warn("[AI] Cannot generate library description without a title/name or supabase client.");
-        return;
-    }
-    setIsGeneratingDesc(true);
-    console.log("[AI] Generating Library Description based on:", basis);
-    try {
-      // --- Get Supabase Auth Token ---
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError) throw new Error(`Supabase session error: ${sessionError.message}`);
-      if (!session) throw new Error('User not authenticated');
-      const token = session.access_token;
-      // --- End Get Supabase Auth Token ---
-
-      // Replace with your actual API endpoint
-      const response = await fetch('https://ybkgvombhjchlcmbrizk.supabase.co/functions/v1/generate-library-description', { // Or use the full Supabase function URL if needed
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`, // <<<--- ADDED AUTH HEADER
-        },
-        body: JSON.stringify({ text: basis }), // Send title or name as basis
-      });
-
-      if (!response.ok) {
-        let errorBody = null;
-        try { errorBody = await response.json(); } catch (e) { /* Ignore */ }
-        console.error("[AI] API Error Response Body:", errorBody);
-        throw new Error(`API Error: ${response.statusText} (Status: ${response.status}) ${errorBody?.error ? `- ${errorBody.error}` : ''}`);
-      }
-
-      const data = await response.json();
-      if (data.result) {
-        setLibraryTaskDesc(data.result); // Update the library description state
-      } else {
-        console.error("[AI] No result found for library description:", data);
-      }
-    } catch (error) {
-      console.error("[AI] Failed to generate library description:", error);
-    } finally {
-      setIsGeneratingDesc(false);
-    }
-  }, [taskTitle, taskName, supabase]); // Add supabase to dependency array
-
-  // --- End AI Placeholder Handlers ---
-
-  // --- Handlers ---
+  // Reset form fields
   const closeAndReset = () => {
-    onOpenChange(false); 
+    setTaskName("");
+    setTaskDescription("");
+    setTaskPrice("");
+    // setSaveToLibrary(false); // Reset save to library flag
+    // Don't reset selectedTierId here to keep the default selection logic in the effect
+    onOpenChange(false); // Also close the dialog
   };
 
-  const handleAddTaskToQuote = () => {
-    const priceValue = parseFloat(taskPrice);
-    if (!taskName.trim() || isNaN(priceValue) || !selectedTierId) {
-      console.error("Invalid custom task input for quote.");
-      return;
-    }
-    const newTask: QuoteTask = {
-      taskId: `custom-${uuidv4()}`,
-      name: taskName.trim(),
-      description: taskDesc.trim(), 
-      basePrice: priceValue,
-      addons: [],
-    };
-    onAddCustomTask(newTask, selectedTierId);
-    closeAndReset();
-  };
-
-  // --- Main Save Handler (Restored and Placed Correctly) --- 
-  const handleSaveToLibraryAndQuote = () => {
-      const priceValue = taskPriceInclGST ? parseFloat(taskPriceInclGST) : NaN; 
-      const basePriceForQuote = parseFloat(taskPrice); 
-      const priceInclGSTValue = !isNaN(priceValue) ? priceValue : undefined;
-      const timeValue = taskTime ? parseFloat(taskTime) : undefined;
-      const materialsValue = taskMaterials ? parseFloat(taskMaterials) : undefined;
-
-      if (!taskTitle.trim() || isNaN(priceValue) || !selectedTierId) {
-         console.error("Invalid library task input. Title, Price Incl. GST, and Tier are required.");
-         return;
-      }
-       if (taskTime && isNaN(timeValue as number)) { return; }
-       if (taskMaterials && isNaN(materialsValue as number)) { return; }
-
-      let categoryName: string | undefined;
-      let subcategoryName: string | undefined;
-      let subSubcategoryName: string | undefined;
-      const tags: string[] = [CUSTOM_CATEGORY_NAME]; 
-
-      if (selectedCategoryId) {
-        categoryName = serviceCategories.find(c => c.id === selectedCategoryId)?.name;
-        if (categoryName) { tags.push(categoryName); }
-        if (selectedSubcategoryId) {
-          subcategoryName = availableSubcategories.find(sc => sc.id === selectedSubcategoryId)?.name;
-          if (subcategoryName) { tags.push(subcategoryName); }
-           if (selectedSubSubcategoryId) {
-              subSubcategoryName = availableSubSubcategories.find(ssc => ssc.id === selectedSubSubcategoryId)?.name;
-               if (subSubcategoryName) { tags.push(subSubcategoryName); }
-           }
-        }
-      } else {
-        categoryName = undefined; 
-        subcategoryName = undefined;
-        subSubcategoryName = undefined;
-      }
-
-      const libraryTaskData: QuoteTask = {
-        taskId: `library-${uuidv4()}`,
-        name: taskTitle.trim(), 
-        description: libraryTaskDesc.trim(), // Use popover description for library item
-        basePrice: !isNaN(basePriceForQuote) ? basePriceForQuote : 0, 
-        addons: [],
-        title: taskTitle.trim(), 
-        code: taskCode.trim() || undefined,
-        category: categoryName, 
-        subcategory: subcategoryName, 
-        subSubcategory: subSubcategoryName, 
-        tags: tags, 
-        imageFile: taskImageFile.trim() || undefined, 
-        configOption: taskConfigOption.trim() || undefined,
-        priceInclGST: priceInclGSTValue,
-        time: timeValue,
-        materials: materialsValue,
+  // Handler for adding the task to the quote only (inside the dialog)
+  const handleAddTaskToQuoteDialog = () => {
+    const price = parseFloat(taskPrice);
+    if (taskName.trim() && !isNaN(price) && selectedTierId) {
+      const newTask: QuoteTask = {
+        taskId: `custom-${uuidv4()}`,
+        name: taskName.trim(),
+        description: taskDescription.trim(),
+        basePrice: price,
+        category: CUSTOM_CATEGORY_NAME, // Assign to custom category
+        addons: [], // Initialize addons
+        quantity: 1, // Initialize quantity
       };
-
-      console.log("Saving task to library (with tags):", libraryTaskData);
-      onSaveTaskToLibrary(libraryTaskData, selectedTierId); 
-      // When saving to library, use the library data (incl. popover desc) to add to quote
-      onAddCustomTask(libraryTaskData, selectedTierId); 
-      closeAndReset(); 
+      onAddCustomTask(newTask, selectedTierId); // Call the parent's handler
+      closeAndReset(); // Close and reset form
+    } else {
+      // Basic validation feedback (consider using a more robust validation library)
+      alert("Please enter a valid task name, price, and select a tier.");
+    }
   };
-  // --- End Main Save Handler --- 
 
+  // Handler for saving to library AND adding to quote (currently commented out in JSX)
+  const handleSaveToLibraryAndQuote = () => {
+    const price = parseFloat(taskPrice);
+    if (taskName.trim() && !isNaN(price) && selectedTierId) {
+      const newTask: QuoteTask = {
+        taskId: `library-${uuidv4()}`, // Use library prefix? Or make it consistent
+        name: taskName.trim(),
+        description: taskDescription.trim(),
+        basePrice: price,
+        category: CUSTOM_CATEGORY_NAME,
+        addons: [],
+        quantity: 1,
+      };
+      // 1. Save to library (call parent function)
+      onSaveTaskToLibrary(newTask, selectedTierId);
+      // 2. Add to current quote
+      onAddCustomTask(newTask, selectedTierId); // Call the parent's handler
+      // 3. Close and reset
+      closeAndReset();
+    } else {
+      alert("Please enter a valid task name and price.");
+    }
+  };
+
+  // Handle image upload click
   const handleImageButtonClick = () => {
-    console.log("Image Attach/Camera button clicked - implement file selection logic here.");
+    console.log("Image upload clicked");
+    // Trigger file input click or open a modal
+    const fileInput = document.getElementById('task-image-upload');
+    fileInput?.click();
   };
 
-  if (!isOpen) return null;
+  // --- Placeholder AI Handlers ---
+  const [isEnhancingName, setIsEnhancingName] = useState(false);
+  const [isGeneratingDesc, setIsGeneratingDesc] = useState(false);
 
-  const basicFieldsValid = taskName.trim() && selectedTierId && !isNaN(parseFloat(taskPrice));
-  const libraryFieldsValid = taskTitle.trim() && selectedTierId && !isNaN(parseFloat(taskPriceInclGST));
+  const handleEnhanceName = useCallback(async () => {
+    if (!taskName.trim() || !supabase) return;
+    setIsEnhancingName(true);
+    console.log("AI Enhancing Name:", taskName);
+    // Simulate API call
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    setTaskName(taskName + " (Enhanced)"); // Placeholder enhancement
+    setIsEnhancingName(false);
+  }, [taskName, supabase]);
+
+  const handleGenerateDescription = useCallback(async () => {
+    if (!taskName.trim() || !supabase) return;
+    setIsGeneratingDesc(true);
+    console.log("AI Generating Desc for:", taskName);
+    // Simulate API call
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    setTaskDescription(`This is an AI-generated description based on "${taskName}". It details the work involved and potential benefits.`);
+    setIsGeneratingDesc(false);
+  }, [taskName, supabase]);
+  // --- End Placeholder AI Handlers ---
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl grid-rows-[auto_minmax(0,1fr)_auto] p-0 max-h-[90vh]">
-        <DialogHeader className="p-6 pb-4"> 
-          <DialogTitle>Add Custom Task</DialogTitle>
+      <DialogContent className="sm:max-w-[480px]">
+        <DialogHeader>
+          <DialogTitle className="flex items-center">
+            <ClipboardPlus className="mr-2 h-5 w-5" /> Add Custom Task
+          </DialogTitle>
           <DialogDescription>
-            Enter details below. You can add the task directly to the quote or save it to the library with more details for reuse.
+            Create a one-off task for the current quote. Optionally save it to your library.
           </DialogDescription>
         </DialogHeader>
-        
-        <ScrollArea className="px-6 border-y overflow-y-auto">
-          <div className="grid gap-4 py-6">
-            {/* Name Input Group */}
-            {/* --- Basic Fields --- */}
-            <div className="grid grid-cols-4 items-center gap-x-4 gap-y-2">
-              <Label htmlFor="custom-task-name" className="text-right">Name*</Label>
-              <div className="col-span-3 flex items-center gap-1.5"> 
-                <Input 
-                  id="custom-task-name" 
-                  value={taskName} 
-                  onChange={(e) => setTaskName(e.target.value)} 
-                  className="flex-grow" 
+        <div className="grid gap-4 py-4">
+           {/* Name Input with AI Button */}
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="task-name" className="text-right">
+              Name*
+            </Label>
+             <div className="col-span-3 flex items-center gap-1.5">
+                <Input
+                  id="task-name"
+                  value={taskName}
+                  onChange={(e) => setTaskName(e.target.value)}
+                  className="flex-grow"
+                  placeholder="e.g., Special Consultation Fee"
                 />
-                <Button 
-                  type="button" 
-                  variant="ghost" 
-                  size="icon" 
-                  className="h-8 w-8 text-purple-500 hover:bg-purple-100 disabled:opacity-50" 
-                  onClick={handleEnhanceName} 
-                  disabled={!taskName.trim() || isEnhancingName}
-                  title="Enhance Name with AI"
-                >
-                  <Sparkles className={`h-4 w-4 ${isEnhancingName ? 'animate-pulse' : ''}`} />
-                </Button>
-              </div>
-            </div>
-            <div className="grid grid-cols-4 items-start gap-x-4 gap-y-2">
-              <Label htmlFor="custom-task-desc" className="text-right pt-2">Description</Label>
-              <div className="col-span-3 flex items-start gap-1.5"> 
-                 <Textarea 
-                    id="custom-task-desc" 
-                    value={taskDesc} 
-                    onChange={(e) => setTaskDesc(e.target.value)} 
-                    className="flex-grow" 
-                    rows={3} 
-                 />
-                 <Button 
-                  type="button" 
-                  variant="ghost" 
-                  size="icon" 
-                  className="h-8 w-8 text-purple-500 hover:bg-purple-100 disabled:opacity-50 mt-1.5" 
-                  onClick={handleGenerateMainDescription} 
-                  disabled={isGeneratingMainDesc || !taskName.trim()} // Disable if no name or processing
-                  title="Generate Description with AI (uses Name)"
-                 >
-                    <Sparkles className={`h-4 w-4 ${isGeneratingMainDesc ? 'animate-pulse' : ''}`} />
-                 </Button>
-              </div>
-            </div>
-            <div className="grid grid-cols-4 items-center gap-x-4 gap-y-2">
-              <Label htmlFor="custom-task-price" className="text-right">Base Price*</Label>
-              <Input id="custom-task-price" type="number" value={taskPrice} onChange={(e) => setTaskPrice(e.target.value)} className="col-span-3" step="0.01" />
-            </div>
-             {/* Target Tier Dropdown */}
-            <div className="grid grid-cols-4 items-center gap-x-4 gap-y-2">
-               <Label htmlFor="custom-task-tier" className="text-right">Target Tier*</Label>
-               <Select 
-                 value={selectedTierId} 
-                 onValueChange={setSelectedTierId} 
-                 disabled={availableTiers.length === 0}
-               >
-                 <SelectTrigger className="col-span-3">
-                   <SelectValue placeholder="Select a tier..." />
-                 </SelectTrigger>
-                 <SelectContent>
-                   {availableTiers.map(tier => (
-                     <SelectItem key={tier.id} value={tier.id}>{tier.name}</SelectItem>
-                   ))}
-                   {availableTiers.length === 0 && <SelectItem value="" disabled>No tiers available</SelectItem>}
-                 </SelectContent>
-               </Select>
+                 <Tooltip>
+                   <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-purple-500 hover:bg-purple-100 disabled:opacity-50"
+                        onClick={handleEnhanceName}
+                        disabled={!taskName.trim() || isEnhancingName}
+                      >
+                        <Sparkles className={`h-4 w-4 ${isEnhancingName ? 'animate-pulse' : ''}`} />
+                      </Button>
+                   </TooltipTrigger>
+                   <TooltipContent>
+                     <p>Enhance Name with AI</p>
+                   </TooltipContent>
+                 </Tooltip>
              </div>
           </div>
-        </ScrollArea>
-        
-        {/* --- Footer with Popover for Library --- */}
-        <DialogFooter className="gap-2 sm:justify-between p-6 pt-4 bg-muted/50 sm:bg-transparent">
-          <Button type="button" variant="outline" onClick={closeAndReset}>Cancel</Button>
-          <div className="flex gap-2">
-            <Button 
-              type="button" 
-              variant="secondary" 
-              onClick={handleAddTaskToQuote} 
-              disabled={!basicFieldsValid}
-              title="Add this task only to the current quote"
-            >
-              Add to Quote Only
-            </Button>
-            <Popover open={isLibraryPopoverOpen} onOpenChange={setIsLibraryPopoverOpen}>
-              <PopoverTrigger asChild>
-                <Button 
-                  type="button" 
-                  variant="default"
-                  disabled={!basicFieldsValid}
-                  title="Add details and save this task to the library for reuse"
-                >
-                  Add to Library...
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-[450px] p-0" side="top" align="end">
-                <div className="p-4 border-b bg-muted/50">
-                   <h4 className="text-sm font-medium">Library Details</h4>
-                   <p className="text-xs text-muted-foreground">Fill in details to save this task for future use.</p>
-                </div>
-                <ScrollArea className="max-h-[50vh] p-4">
-                  <div className="grid gap-3">
-                     {/* --- Metadata Fields inside Popover --- */}
-                      <div className="grid grid-cols-4 items-center gap-x-4 gap-y-1">
-                        <Label htmlFor="library-task-title" className="text-right text-xs">Title*</Label>
-                        <div className="col-span-3 flex items-center gap-1.5"> 
-                          <Input id="library-task-title" value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} className="flex-grow h-8 text-xs" />
-                          <Button 
-                            type="button" 
-                            variant="ghost" 
-                            size="icon" 
-                            className="h-8 w-8 text-purple-500 hover:bg-purple-100 disabled:opacity-50" 
-                            onClick={handleEnhanceTitle} 
-                            disabled={!taskTitle.trim() || isEnhancingTitle}
-                            title="Enhance Title with AI"
-                          >
-                            <Sparkles className={`h-4 w-4 ${isEnhancingTitle ? 'animate-pulse' : ''}`} />
-                          </Button>
-                        </div>
-                      </div>
-                       <div className="grid grid-cols-4 items-start gap-x-4 gap-y-1">
-                         <Label htmlFor="library-task-desc" className="text-right text-xs pt-1.5">Description</Label>
-                         <div className="col-span-3 flex items-start gap-1.5"> 
-                           <Textarea 
-                             id="library-task-desc" 
-                             value={libraryTaskDesc} 
-                             onChange={(e) => setLibraryTaskDesc(e.target.value)} 
-                             className="flex-grow text-xs" 
-                             rows={2} 
-                           />
-                            <Button 
-                              type="button" 
-                              variant="ghost" 
-                              size="icon" 
-                              className="h-8 w-8 text-purple-500 hover:bg-purple-100 disabled:opacity-50 mt-1" 
-                              onClick={handleGenerateLibraryDescription} 
-                              disabled={isGeneratingDesc || (!taskTitle.trim() && !taskName.trim())} 
-                              title="Generate/Rewrite Description with AI"
-                            >
-                              <Sparkles className={`h-4 w-4 ${isGeneratingDesc ? 'animate-pulse' : ''}`} />
-                            </Button>
-                         </div>
-                       </div>
-                       <div className="grid grid-cols-4 items-center gap-x-4 gap-y-1">
-                         <Label htmlFor="library-task-gst" className="text-right text-xs">Price Incl. GST*</Label>
-                         <Input id="library-task-gst" type="number" value={taskPriceInclGST} onChange={(e) => setTaskPriceInclGST(e.target.value)} className="col-span-3 h-8 text-xs" step="0.01" />
-                       </div>
-                       
-                       <Separator className="my-2" />
-                       
-                       <div className="grid grid-cols-4 items-center gap-x-4 gap-y-1">
-                         <Label htmlFor="library-task-category" className="text-right text-xs">Category</Label>
-                         <Select value={selectedCategoryId} onValueChange={setSelectedCategoryId}>
-                           <SelectTrigger className="col-span-3 h-8 text-xs">
-                             <SelectValue placeholder="Select category..." />
-                           </SelectTrigger>
-                           <SelectContent>
-                             {serviceCategories.map(cat => (
-                               <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
-                             ))}
-                           </SelectContent>
-                         </Select>
-                       </div>
-                       
-                       {selectedCategoryId && availableSubcategories.length > 0 && (
-                           <div className="grid grid-cols-4 items-center gap-x-4 gap-y-1">
-                             <Label htmlFor="library-task-subcategory" className="text-right text-xs">Subcategory</Label>
-                             <Select value={selectedSubcategoryId} onValueChange={setSelectedSubcategoryId}>
-                               <SelectTrigger className="col-span-3 h-8 text-xs">
-                                 <SelectValue placeholder="Select subcategory..." />
-                               </SelectTrigger>
-                               <SelectContent>
-                                  {availableSubcategories.map(subcat => (
-                                    <SelectItem key={subcat.id} value={subcat.id}>{subcat.name}</SelectItem>
-                                  ))}
-                               </SelectContent>
-                             </Select>
-                           </div>
-                       )}
-                        
-                       {selectedSubcategoryId && availableSubSubcategories.length > 0 && (
-                           <div className="grid grid-cols-4 items-center gap-x-4 gap-y-1">
-                             <Label htmlFor="library-task-subsubcategory" className="text-right text-xs">Sub-Subcategory</Label>
-                             <Select value={selectedSubSubcategoryId} onValueChange={setSelectedSubSubcategoryId}>
-                               <SelectTrigger className="col-span-3 h-8 text-xs">
-                                 <SelectValue placeholder="Select sub-subcategory..." />
-                               </SelectTrigger>
-                               <SelectContent>
-                                  {availableSubSubcategories.map(subsubcat => (
-                                    <SelectItem key={subsubcat.id} value={subsubcat.id}>{subsubcat.name}</SelectItem>
-                                  ))}
-                               </SelectContent>
-                             </Select>
-                           </div>
-                       )}
-                       
-                       <Separator className="my-2" />
-                       
-                       <div className="grid grid-cols-4 items-center gap-x-4 gap-y-1">
-                         <Label htmlFor="library-task-code" className="text-right text-xs">Code</Label>
-                         <Input id="library-task-code" value={taskCode} onChange={(e) => setTaskCode(e.target.value)} className="col-span-3 h-8 text-xs" />
-                       </div>
-                        <div className="grid grid-cols-4 items-center gap-x-4 gap-y-1">
-                          <Label htmlFor="library-task-config" className="text-right text-xs">Config Option</Label>
-                          <Input id="library-task-config" value={taskConfigOption} onChange={(e) => setTaskConfigOption(e.target.value)} className="col-span-3 h-8 text-xs" />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-x-4 gap-y-1">
-                          <Label htmlFor="library-task-time" className="text-right text-xs">Time (Hours)</Label>
-                          <Input id="library-task-time" type="number" value={taskTime} onChange={(e) => setTaskTime(e.target.value)} className="col-span-3 h-8 text-xs" step="0.1" />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-x-4 gap-y-1">
-                           <Label htmlFor="library-task-materials" className="text-right text-xs">Materials Cost</Label>
-                           <Input id="library-task-materials" type="number" value={taskMaterials} onChange={(e) => setTaskMaterials(e.target.value)} className="col-span-3 h-8 text-xs" step="0.01" />
-                        </div>
-                         <div className="grid grid-cols-4 items-center gap-x-4 gap-y-1">
-                           <Label htmlFor="library-task-image" className="text-right text-xs">Image</Label>
-                           <Button 
-                             variant="outline" 
-                             size="sm"
-                             className="col-span-3 h-8 text-xs justify-start text-muted-foreground" 
-                             onClick={handleImageButtonClick}
-                           >
-                              <Camera className="mr-2 h-4 w-4" />
-                              {taskImageFile ? taskImageFile : "Attach Image..."} 
-                           </Button>
-                         </div>
-                  </div>
-                 </ScrollArea>
-                 <div className="p-4 border-t flex justify-end bg-muted/50">
-                    <Button 
-                       type="button" 
-                       size="sm"
-                       onClick={handleSaveToLibraryAndQuote} 
-                       disabled={!libraryFieldsValid} 
-                     >
-                       Save to Library & Add to Quote
-                     </Button>
-                 </div>
-              </PopoverContent>
-            </Popover>
+           {/* Description Textarea with AI Button */}
+          <div className="grid grid-cols-4 items-start gap-4"> {/* Use items-start for multiline */}
+            <Label htmlFor="task-description" className="text-right pt-2"> {/* Add padding-top */}
+              Description
+            </Label>
+             <div className="col-span-3 flex items-start gap-1.5">
+                <Textarea
+                  id="task-description"
+                  value={taskDescription}
+                  onChange={(e) => setTaskDescription(e.target.value)}
+                  className="flex-grow"
+                  placeholder="(Optional) Add more details about the task"
+                  rows={3}
+                />
+                 <Tooltip>
+                   <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-purple-500 hover:bg-purple-100 disabled:opacity-50 mt-1.5" // Align button slightly lower
+                        onClick={handleGenerateDescription}
+                        disabled={!taskName.trim() || isGeneratingDesc} // Disable if no name or generating
+                      >
+                        <Sparkles className={`h-4 w-4 ${isGeneratingDesc ? 'animate-pulse' : ''}`} />
+                      </Button>
+                   </TooltipTrigger>
+                   <TooltipContent>
+                     <p>Generate Description with AI (uses Name)</p>
+                   </TooltipContent>
+                 </Tooltip>
+             </div>
           </div>
+           {/* Price Input */}
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="task-price" className="text-right">
+              Price*
+            </Label>
+            <Input
+              id="task-price"
+              type="number"
+              value={taskPrice}
+              onChange={(e) => setTaskPrice(e.target.value)}
+              className="col-span-3"
+              placeholder="e.g., 150.00"
+              step="0.01"
+              required // Add required attribute
+            />
+          </div>
+           {/* Tier Selection */}
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="task-tier" className="text-right">
+              Add to Tier*
+            </Label>
+            <Select value={selectedTierId} onValueChange={setSelectedTierId} required>
+              <SelectTrigger className="col-span-3">
+                <SelectValue placeholder="Select a tier..." />
+              </SelectTrigger>
+              <SelectContent>
+                {availableTiers.length > 0 ? (
+                  availableTiers.map((tier) => (
+                    <SelectItem key={tier.id} value={tier.id}>
+                      {tier.name}
+                    </SelectItem>
+                  ))
+                ) : (
+                  <SelectItem value="" disabled>No tiers available</SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+           {/* Hidden File Input and Image Upload Button */}
+            <input type="file" id="task-image-upload" accept="image/*" className="hidden" onChange={(e) => console.log("File selected:", e.target.files)} />
+            <div className="grid grid-cols-4 items-center gap-4">
+               <Label className="text-right">Image</Label>
+               <Button variant="outline" onClick={handleImageButtonClick} className="col-span-3">
+                 <Camera className="mr-2 h-4 w-4" /> Upload Image
+               </Button>
+            </div>
+          {/* Save to Library Checkbox - currently removed */}
+          {/*
+           <div className="grid grid-cols-4 items-center gap-4">
+             <Label htmlFor="save-library" className="text-right">
+               Save
+             </Label>
+             <div className="col-span-3 flex items-center space-x-2">
+               <Checkbox
+                 id="save-library"
+                 checked={saveToLibrary}
+                 onCheckedChange={(checked) => setSaveToLibrary(checked === true)} // Handle boolean conversion
+               />
+               <label htmlFor="save-library" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                 Save this task to library for future use
+               </label>
+              </div>
+           </div>
+           */}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          {/* Conditional Button Text - Call the correct handler */}
+          <Button onClick={handleAddTaskToQuoteDialog} disabled={!taskName.trim() || isNaN(parseFloat(taskPrice)) || !selectedTierId}>
+            Add Task to Quote
+          </Button>
+           {/* Add "Save to Library & Add" button if needed - currently commented out */}
+          {/*
+           <Button onClick={handleSaveToLibraryAndQuote} disabled={!taskName.trim() || isNaN(parseFloat(taskPrice)) || !selectedTierId}>
+             Save to Library & Add
+           </Button>
+           */}
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
-// --- End Add Custom Task Dialog ---
 
-// Utility function (can be defined inside or outside component)
-function recalculateQuoteTotalForSelectedTier(quote: Quote): number {
-    if (!quote || !quote.selectedTierId || !quote.tierTasks[quote.selectedTierId]) {
-      return 0;
-    }
-    const tasks = quote.tierTasks[quote.selectedTierId];
-    return tasks.reduce((sum, task) => {
-      const quantity = task.quantity ?? 1;
-      const taskAddonTotal = task.addons?.reduce((addonSum: number, addon: Addon) => addonSum + addon.price, 0) ?? 0;
-      const taskTotal = (task.basePrice + taskAddonTotal) * quantity;
-      return sum + taskTotal;
-    }, 0);
+// Helper function to recalculate total price for a specific tier
+function calculateTierTotalPrice(quote: Quote, tierId: string): number {
+  if (!quote || !quote.tierTasks || !quote.tierTasks[tierId]) {
+    return 0;
+  }
+  const tierTasks = quote.tierTasks[tierId];
+  return tierTasks.reduce((sum, task) => {
+    const basePrice = Number(task.basePrice) || 0;
+    const quantity = Number(task.quantity) || 1;
+    const addonTotal = task.addons?.reduce((addonSum, addon) => addonSum + (Number(addon.price) || 0), 0) ?? 0;
+    const taskTotal = (basePrice + addonTotal) * quantity;
+    return sum + taskTotal;
+  }, 0);
 }
 
+// Helper function to recalculate total for the currently selected tier
+function recalculateQuoteTotalForSelectedTier(quote: Quote): number {
+  if (!quote || !quote.selectedTierId) {
+    return 0;
+  }
+  return calculateTierTotalPrice(quote, quote.selectedTierId);
+}
+
+// --- Main Pricebook Page Component ---
 export function PricebookPage() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [sidebarOpen, _setSidebarOpen] = useState(true); // Marked setter as unused
+  const [sidebarOpen, _setSidebarOpen] = useState(true); // Keep sidebar open by default for now
   const [mainMenuOpen, setMainMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isHovering, setIsHovering] = useState(false);
   const [searchResults, setSearchResults] = useState<{
-    categories: typeof serviceCategories;
-    services: typeof services;
+    categories: ServiceCategory[];
+    services: Service[];
   }>({
     categories: serviceCategories,
     services: [],
   });
 
-  // --- NEW STATE ---
+  // --- Quote and Customer State ---
   const [isQuoteSidebarVisible, setIsQuoteSidebarVisible] = useState(true);
   const [allCustomers, setAllCustomers] = useState<Customer[]>(mockCustomers);
   const [currentCustomer, setCurrentCustomer] = useState<Customer | null>(allCustomers[0] || null);
-  const [customerQuotes, setCustomerQuotes] = useState<Quote[]>(() => 
+  const [customerQuotes, setCustomerQuotes] = useState<Quote[]>(() =>
     currentCustomer ? getInitialQuotesForCustomer(currentCustomer.id) : []
   );
-  const [currentQuoteId, setCurrentQuoteId] = useState<string | null>(null);
+  const [currentQuoteId, setCurrentQuoteId] = useState<string | null>(
+     () => currentCustomer ? getInitialQuotesForCustomer(currentCustomer.id)[0]?.id || null : null
+  );
   const [availableTiers, setAvailableTiers] = useState<Tier[]>(mockAvailableTiers);
   const [activeBaseQuoteNumber, setActiveBaseQuoteNumber] = useState<string | null>(null);
   const [isCustomTaskDialogOpen, setIsCustomTaskDialogOpen] = useState(false);
-  const [isHistoryPanelOpen, setIsHistoryPanelOpen] = useState(false);
-  
-  // *** Ensure Supabase client is obtained early ***
-  const supabase = useSupabaseClient(); // <<< MOVED/ENSURED DECLARATION IS HERE
 
-  // Use undo service for history management
-  const { 
-    canUndo, 
-    canRedo, 
-    undo, 
-    redo, 
-    addToHistory, 
-    isProcessingAction,
-    lastActionDescription
-  } = useUndoService();
+  const supabase = useSupabaseClient();
 
-  // Register keyboard shortcuts for undo/redo
-  useUndoRedoShortcuts(undo, redo);
-
-  // Track history state changes
-  const handleHistoryStateChange = useCallback((newState: AppHistoryState) => {
-    console.log("[History] State changed:", newState);
-    if (newState.quotes && newState.quotes.length > 0) {
-      setCustomerQuotes(newState.quotes);
-    }
-    if (newState.currentQuoteId !== undefined) {
-      setCurrentQuoteId(newState.currentQuoteId);
-    }
-    if (newState.customers && newState.customers.length > 0) {
-      setAllCustomers(newState.customers);
-    }
-  }, []);
-
-  // Function to track actions in history
-  const trackAction = useCallback((actionType: string, data?: any) => {
-    // This will be used with the ActionHistoryProvider
-    console.log(`[History] Tracking action: ${actionType}`, data);
-  }, []);
-
-  // --- CURRENT QUOTE LOGIC ---
+  // --- Calculate Current Quote ---
   const currentQuote = useMemo(() => {
     if (!currentQuoteId) return null;
     return customerQuotes.find(q => q.id === currentQuoteId) || null;
   }, [currentQuoteId, customerQuotes]);
 
-  // --- NEW HANDLERS ---
-  const handleToggleQuoteSidebar = useCallback(() => {
-    setIsQuoteSidebarVisible(prev => !prev);
-  }, []);
+  // --- Callback Functions ---
 
-  const handleQuoteSelect = useCallback((quoteId: string) => {
-    console.log("Select Quote:", quoteId);
-    setCurrentQuoteId(quoteId);
-  }, []);
+  // UPDATED: Now increments quantity if the task already exists in the tier.
+  const handleAddTaskToQuote = useCallback((task: Service | QuoteTask) => {
+    if (!currentQuoteId) {
+      console.warn("Cannot add task: No current quote selected.");
+      return;
+    }
+    setCustomerQuotes((prevQuotes: Quote[]): Quote[] => // Add type for prevQuotes
+      prevQuotes.map((quote: Quote): Quote => { // Add type for quote
+        if (quote.id === currentQuoteId && quote.selectedTierId) {
+          const selectedTierId = quote.selectedTierId;
+          const currentTasks: QuoteTask[] = quote.tierTasks[selectedTierId] || []; // Add type
+          let updatedTasks: QuoteTask[] = [...currentTasks]; // Start with a copy
+          let taskFoundAndUpdated = false;
 
-  const handleTierSelect = useCallback((tierId: string) => {
-    console.log("Select Tier:", tierId);
-    setCustomerQuotes(prevQuotes => 
-      prevQuotes.map(q => 
-        q.id === currentQuoteId 
-          ? { ...q, selectedTierId: tierId, updatedAt: new Date().toISOString() } 
-          : q
-      )
+          // Determine if the input is a Service or a QuoteTask
+          const isService = 'price' in task && !('taskId' in task);
+
+          if (isService) {
+            // --- Adding a Service ---
+            const serviceToAdd = task as Service;
+            updatedTasks = currentTasks.map((existingTask: QuoteTask): QuoteTask => { // Add type for existingTask
+              if (existingTask.originalServiceId === serviceToAdd.id) {
+                taskFoundAndUpdated = true;
+                console.log(` -> Found existing task (from Service ID ${serviceToAdd.id}), incrementing quantity.`);
+                return { ...existingTask, quantity: (existingTask.quantity || 1) + 1 };
+              }
+              return existingTask;
+            });
+
+            if (!taskFoundAndUpdated) {
+              console.log(` -> Service task "${serviceToAdd.name}" not found in tier ${selectedTierId}, adding as new.`);
+              const newTask: QuoteTask = {
+                taskId: `task-${uuidv4()}`,
+                originalServiceId: serviceToAdd.id,
+                name: serviceToAdd.name,
+                description: serviceToAdd.description,
+                basePrice: serviceToAdd.price,
+                quantity: 1,
+                addons: [],
+                category: serviceToAdd.categoryId,
+              };
+              updatedTasks = [...updatedTasks, newTask];
+            }
+          } else {
+            // --- Adding a QuoteTask ---
+            const quoteTaskToAdd = task as QuoteTask;
+            // Important: Check if the task being added *already exists* by taskId
+            const existingIndex = updatedTasks.findIndex((et: QuoteTask) => et.taskId === quoteTaskToAdd.taskId); // Add type
+
+            if (existingIndex !== -1) {
+               // Task already exists, increment its quantity
+               taskFoundAndUpdated = true;
+               console.log(` -> Found existing QuoteTask (ID ${quoteTaskToAdd.taskId}), incrementing quantity.`);
+               // Ensure quantities are numbers before adding
+               const existingQuantity = Number(updatedTasks[existingIndex].quantity) || 1;
+               const addingQuantity = Number(quoteTaskToAdd.quantity) || 1;
+               updatedTasks[existingIndex] = {
+                   ...updatedTasks[existingIndex],
+                   quantity: existingQuantity + addingQuantity
+               };
+            } else {
+               // Task does not exist, add it as new
+               console.log(` -> QuoteTask "${quoteTaskToAdd.name}" (ID: ${quoteTaskToAdd.taskId}) not found in tier ${selectedTierId}, adding as new.`);
+               // Ensure quantity is set, defaulting to 1
+               updatedTasks = [...updatedTasks, { ...quoteTaskToAdd, quantity: Number(quoteTaskToAdd.quantity) || 1 }];
+            }
+          }
+
+          // Create the updated quote object
+          const updatedQuote = {
+            ...quote,
+            tierTasks: {
+              ...quote.tierTasks,
+              [selectedTierId]: updatedTasks,
+            },
+            updatedAt: new Date().toISOString(),
+          };
+
+          // Recalculate the total price
+          updatedQuote.totalPrice = recalculateQuoteTotalForSelectedTier(updatedQuote);
+
+          console.log(`Quote ${quote.id} updated. New total for tier ${selectedTierId}: ${updatedQuote.totalPrice}`);
+          return updatedQuote;
+        }
+        return quote;
+      })
+    );
+  }, [currentQuoteId]); // Dependency remains currentQuoteId
+
+  // Handler for adding a custom task (from dialog)
+  const handleAddCustomTask = useCallback((newTask: QuoteTask, tierId: string) => {
+    if (!currentQuoteId) {
+        console.warn("Cannot add custom task: No current quote selected.");
+        return;
+    }
+    console.log("Adding custom task:", newTask, "to tier:", tierId);
+    setCustomerQuotes((prevQuotes: Quote[]) => // Add type
+      prevQuotes.map((q: Quote) => { // Add type
+        if (q.id === currentQuoteId) {
+          // Ensure the target tier exists
+           if (!q.tierTasks || !(tierId in q.tierTasks)) {
+             console.warn(`Target tier ${tierId} does not exist in quote ${q.id}. Cannot add task.`);
+             return q; // Return quote unchanged
+           }
+          const updatedTierTasks = {
+            ...q.tierTasks,
+            [tierId]: [...(q.tierTasks[tierId]), { ...newTask, quantity: 1, addons: [] }] // Add with default quantity/addons
+          };
+          const updatedQuote = {
+            ...q,
+            tierTasks: updatedTierTasks,
+            updatedAt: new Date().toISOString(),
+          };
+          // Recalculate total for the selected tier if it matches the tier the task was added to
+          if (tierId === q.selectedTierId) {
+            updatedQuote.totalPrice = recalculateQuoteTotalForSelectedTier(updatedQuote);
+          }
+          return updatedQuote;
+        }
+        return q;
+      })
     );
   }, [currentQuoteId]);
 
   const handleDeleteTask = useCallback((taskIndex: number, tierId: string) => {
-    console.log(`[PricebookPage] handleDeleteTask called: index=${taskIndex}, tierId=${tierId}, currentQuoteId=${currentQuoteId}`);
-    if (!currentQuoteId) {
-      console.error("[handleDeleteTask] No current quote selected.");
-      return;
-    }
-
-    setCustomerQuotes(prevQuotes => 
-      prevQuotes.map(quote => {
-        if (quote.id === currentQuoteId) {
-          console.log(`[handleDeleteTask] Found matching quote: ${quote.id}`);
-          // Ensure the tier exists in the quote
-          if (!quote.tierTasks || !(tierId in quote.tierTasks)) {
-            console.error(`[handleDeleteTask] Tier ${tierId} not found in quote ${quote.id}`);
-            return quote; // Return unchanged quote if tier doesn't exist
-          }
-
-          const currentTasks = quote.tierTasks[tierId] || [];
-          console.log(`[handleDeleteTask] Tasks before deletion in tier ${tierId}:`, currentTasks);
-
-          // Validate task index
-          if (taskIndex < 0 || taskIndex >= currentTasks.length) {
-            console.error(`[handleDeleteTask] Invalid task index ${taskIndex} for tier ${tierId} with ${currentTasks.length} tasks.`);
-            return quote; // Return unchanged quote if index is invalid
-          }
-
-          // Create a new array without the task at the specified index
-          const updatedTasks = currentTasks.filter((_, index) => index !== taskIndex);
-          console.log(`[handleDeleteTask] Tasks after deletion in tier ${tierId}:`, updatedTasks);
-          
-          // Create a new tierTasks object with the updated task list for the specific tier
-          const updatedTierTasks = {
-            ...quote.tierTasks,
-            [tierId]: updatedTasks,
-          };
-          
-          // Create the updated quote object
-          let updatedQuote = {
-            ...quote,
-            tierTasks: updatedTierTasks,
-            updatedAt: new Date().toISOString(),
-          };
-
-          // Recalculate total price *only if* the deleted task was in the currently selected tier
-          if (tierId === quote.selectedTierId) {
-             console.log(`[handleDeleteTask] Recalculating total price as deleted task was in selected tier ${tierId}`);
-             updatedQuote.totalPrice = recalculateQuoteTotalForSelectedTier(updatedQuote);
-          } else {
-              console.log(`[handleDeleteTask] Not recalculating total price as deleted task was in tier ${tierId}, not selected tier ${quote.selectedTierId}`);
-          }
-
-          console.log(`[handleDeleteTask] Final updated quote state for ${quote.id}:`, updatedQuote);
-          // Add to history
-          addToHistory({
-            quotes: prevQuotes.map(q => q.id === currentQuoteId ? updatedQuote : q),
-            currentQuoteId,
-            customers: allCustomers
-          }, `Deleted task from ${tierId}`);
-          return updatedQuote;
-        }
-        return quote; // Return other quotes unchanged
-      })
-    );
-  }, [currentQuoteId, addToHistory, allCustomers]);
-
-  const handleAddTier = useCallback((): void => {
-    console.log("Add Tier action triggered");
-    setAvailableTiers(prevTiers => {
-      const existingNamesLower = prevTiers.map(t => t.name.toLowerCase());
-      let newTierName: string | null = null;
-
-      const hasGold = existingNamesLower.includes('gold');
-      const hasSilver = existingNamesLower.includes('silver');
-      const hasBronze = existingNamesLower.includes('bronze');
-
-      // Prioritize standard tiers in order: Gold -> Silver -> Bronze
-      if (!hasGold) {
-        newTierName = "Gold";
-      } else if (!hasSilver) { // Gold must exist if we reach here
-        newTierName = "Silver";
-      } else if (!hasBronze) { // Gold and Silver must exist
-        newTierName = "Bronze";
-      } else {
-        // If standard tiers exist, use colors
-        for (const color of TIER_COLORS) { // Assumes TIER_COLORS is defined outside
-          const colorLower = color.toLowerCase();
-          if (!existingNamesLower.includes(colorLower)) {
-            newTierName = color; // Use the original casing (e.g., "Red")
-            break;
-          }
-        }
-        // Fallback if all colors are used
-        if (!newTierName) {
-          let counter = 1;
-          do {
-            newTierName = `Custom Tier ${counter}`;
-            counter++;
-          } while (existingNamesLower.includes(newTierName.toLowerCase()));
-        }
+      console.log(`[PricebookPage] Deleting task index ${taskIndex} from tier ${tierId}`);
+      if (!currentQuoteId) {
+          console.warn("Cannot delete task: No current quote selected.");
+          return;
       }
 
-      const newTier: Tier = {
-        id: `tier-${uuidv4()}`, // Make sure uuidv4 is imported
-        name: newTierName,
-        // Sensible defaults
-        multiplier: 1.0,
-        warranty: "Standard",
-        perks: [],
-      };
+      setCustomerQuotes((prevQuotes: Quote[]) => // Add type
+          prevQuotes.map((quote: Quote) => { // Add type
+              if (quote.id === currentQuoteId) {
+                  if (!quote.tierTasks || !(tierId in quote.tierTasks)) {
+                      console.warn(`Tier ${tierId} not found in quote ${quote.id}`);
+                      return quote; // Tier doesn't exist, return unchanged
+                  }
 
-      console.log("Adding new tier:", newTier);
-      return [...prevTiers, newTier]; // Add to end of list
+                  const currentTasks = quote.tierTasks[tierId];
+                  if (taskIndex < 0 || taskIndex >= currentTasks.length) {
+                      console.warn(`Invalid task index ${taskIndex} for tier ${tierId}`);
+                      return quote; // Index out of bounds
+                  }
+
+                  // Create new tasks array excluding the task at taskIndex
+                  const updatedTasks = currentTasks.filter((_, index) => index !== taskIndex);
+
+                  // Create updated tierTasks object
+                  const updatedTierTasks = { ...quote.tierTasks, [tierId]: updatedTasks };
+
+                  // Create updated quote object
+                  const updatedQuote = {
+                      ...quote,
+                      tierTasks: updatedTierTasks,
+                      updatedAt: new Date().toISOString(),
+                  };
+
+                  // Recalculate total price if the deletion happened in the selected tier
+                  if (tierId === updatedQuote.selectedTierId) {
+                      updatedQuote.totalPrice = recalculateQuoteTotalForSelectedTier(updatedQuote);
+                      console.log(` -> Task deleted, new total for quote ${quote.id}: ${updatedQuote.totalPrice}`);
+                  }
+                  return updatedQuote;
+              }
+              return quote; // Return other quotes unchanged
+          })
+      );
+  }, [currentQuoteId]);
+
+  const handleQuoteSelect = useCallback((quoteId: string) => {
+    console.log("Selecting Quote:", quoteId);
+    setCurrentQuoteId(quoteId);
+    // Optionally reset other states tied to a specific quote here
+  }, []);
+
+  const handleTierSelect = useCallback((tierId: string) => {
+    console.log("Selecting Tier:", tierId);
+    if (!currentQuoteId) return;
+    setCustomerQuotes((prevQuotes: Quote[]) => // Add type
+      prevQuotes.map((q: Quote) => { // Add type
+         if (q.id === currentQuoteId) {
+            const updatedQuote = {
+               ...q,
+               selectedTierId: tierId,
+               updatedAt: new Date().toISOString(),
+            };
+            // Recalculate total price based on the NEWLY selected tier
+            updatedQuote.totalPrice = calculateTierTotalPrice(updatedQuote, tierId);
+            return updatedQuote;
+         }
+         return q;
+      })
+    );
+  }, [currentQuoteId]);
+
+  const handleAddTier = useCallback(() => {
+    console.log("Add Tier");
+    setAvailableTiers((prevTiers: Tier[]) => { // Add type
+       const existingNames = prevTiers.map(t => t.name.toLowerCase());
+       let newTierName = "New Tier";
+       let counter = 1;
+       while (existingNames.includes(newTierName.toLowerCase())) {
+         newTierName = `New Tier ${counter++}`;
+       }
+
+       const newTier: Tier = {
+         id: `tier-${uuidv4()}`,
+         name: newTierName,
+         multiplier: 1.0,
+         warranty: "Standard",
+         perks: [],
+       };
+       const updatedTiers = [...prevTiers, newTier];
+
+       // Add the new tier key to all existing quotes' tierTasks
+       setCustomerQuotes((prevQuotes: Quote[]) => // Add type
+         prevQuotes.map((q: Quote) => ({ // Add type
+           ...q,
+           tierTasks: {
+             ...q.tierTasks,
+             [newTier.id]: [] // Initialize with empty task list
+           }
+         }))
+       );
+       return updatedTiers;
     });
   }, []);
 
-  const handleDeleteTier = useCallback((tierIdToDelete: string, index: number) => {
-    console.log("Delete Tier:", tierIdToDelete, "at index:", index);
-    setAvailableTiers(prevTiers => prevTiers.filter(t => t.id !== tierIdToDelete));
-    setCustomerQuotes(prevQuotes => 
-      prevQuotes.map(q => {
-        if (q.tierTasks[tierIdToDelete]) {
+  const handleDeleteTier = useCallback((tierIdToDelete: string) => { // Removed unused index
+    console.log("Delete Tier:", tierIdToDelete);
+    // Remove from available tiers first
+    setAvailableTiers((prevTiers: Tier[]) => prevTiers.filter(t => t.id !== tierIdToDelete));
+
+    // Update quotes
+    setCustomerQuotes((prevQuotes: Quote[]) => // Add type
+      prevQuotes.map((q: Quote) => { // Add type
+        if (q.tierTasks && tierIdToDelete in q.tierTasks) {
           const { [tierIdToDelete]: _, ...remainingTierTasks } = q.tierTasks;
           let newSelectedTierId = q.selectedTierId;
+
+          // If the deleted tier was selected, select the first remaining tier or null
           if (q.selectedTierId === tierIdToDelete) {
-            newSelectedTierId = Object.keys(remainingTierTasks)[0] || null;
+            const remainingTierIds = Object.keys(remainingTierTasks);
+            newSelectedTierId = remainingTierIds.length > 0 ? remainingTierIds[0] : null;
           }
-          return { ...q, tierTasks: remainingTierTasks, selectedTierId: newSelectedTierId };
-        } 
-        return q;
+          // Create the updated quote with removed tier and potentially new selected tier
+          const updatedQuote = {
+              ...q,
+              tierTasks: remainingTierTasks,
+              selectedTierId: newSelectedTierId,
+              updatedAt: new Date().toISOString(),
+          };
+          // Recalculate total price based on the (potentially new) selected tier
+          updatedQuote.totalPrice = newSelectedTierId
+              ? calculateTierTotalPrice(updatedQuote, newSelectedTierId)
+              : 0;
+          return updatedQuote;
+        }
+        return q; // Return quote unchanged if the tier wasn't present
       })
     );
   }, []);
 
   const handleRenameTier = useCallback((tierIdToRename: string, newName: string) => {
     console.log("Rename Tier:", tierIdToRename, "to:", newName);
-    setAvailableTiers(prevTiers => 
-      prevTiers.map(t => t.id === tierIdToRename ? { ...t, name: newName } : t)
+    setAvailableTiers((prevTiers: Tier[]) => // Add type
+      prevTiers.map((t: Tier) => (t.id === tierIdToRename ? { ...t, name: newName } : t)) // Add type
     );
+    // No need to update quotes here as the tier ID remains the same
   }, []);
 
   const handlePreviewQuote = useCallback(() => console.log("Preview Quote"), []);
+
   const handleUpdateCustomer = useCallback((updatedCustomer: Customer) => {
+    // const previousCustomerState = allCustomers.find(c => c.id === updatedCustomer.id);
     console.log("Update Customer:", updatedCustomer);
+    setAllCustomers((prev: Customer[]) => prev.map(c => c.id === updatedCustomer.id ? updatedCustomer : c)); // Add type
     setCurrentCustomer(updatedCustomer);
-  }, []);
+    // TODO: Add call to ServiceM8 API to update customer
+    // TODO: Add history tracking if needed
+  }, []); // Removed allCustomers dependency as setAllCustomers uses functional update
 
   const handleCustomerSelect = useCallback((customerId: string) => {
     console.log("Selecting Customer:", customerId);
     const selectedCustomer = allCustomers.find(c => c.id === customerId);
     if (selectedCustomer) {
       setCurrentCustomer(selectedCustomer);
+      // Fetch/set quotes for the newly selected customer
+      const initialQuotes = getInitialQuotesForCustomer(selectedCustomer.id);
+      const baseNumber = initialQuotes[0]?.quoteNumber;
+      if (baseNumber) {
+        setActiveBaseQuoteNumber(baseNumber);
+      } else {
+        // If no quotes exist, generate a base number for potential new quotes
+        const newBase = `Q-${Date.now().toString().slice(-6)}`;
+        setActiveBaseQuoteNumber(newBase);
+        console.warn(`Generated new base quote number for ${selectedCustomer.name}: ${newBase}`);
+      }
+      setCustomerQuotes(initialQuotes);
+      setCurrentQuoteId(initialQuotes[0]?.id || null);
     } else {
       console.warn("Selected customer not found:", customerId);
       setCurrentCustomer(null);
+      setCustomerQuotes([]); // Clear quotes if customer not found
+      setCurrentQuoteId(null);
+      setActiveBaseQuoteNumber(null);
     }
-  }, [allCustomers]);
+  }, [allCustomers]); // Dependency on allCustomers is correct here
 
   const handleAddQuote = useCallback((nextSequenceNumber: number) => {
     if (!currentCustomer) {
@@ -1200,79 +940,74 @@ export function PricebookPage() {
 
     if (!baseQuoteNumberToUse) {
       console.error(`Cannot add quote: No active base quote number found for customer ${currentCustomer.id}.`);
-      // Optionally generate a fallback, but ideally the state should be set correctly.
-      // baseQuoteNumberToUse = `Q-${Date.now().toString().slice(-6)}`; 
       return; // Prevent adding quote if base number is missing
     }
 
     const newQuote: Quote = {
       id: `quote-${uuidv4()}`,
       quoteNumber: baseQuoteNumberToUse, // Use the state variable
-      sequenceNumber: nextSequenceNumber, 
-      name: `${nextSequenceNumber}`, 
+      sequenceNumber: nextSequenceNumber,
+      name: `${nextSequenceNumber}`,
       customerId: currentCustomer.id,
       status: "Draft",
       tierTasks: availableTiers.reduce((acc, tier) => {
         acc[tier.id] = [];
         return acc;
-      }, {} as { [key: string]: QuoteTask[] }), 
-      selectedTierId: DEFAULT_TIER.id, 
+      }, {} as { [key: string]: QuoteTask[] }),
+      selectedTierId: availableTiers[0]?.id || null, // Select first available tier or null
       adjustments: [],
       totalPrice: 0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    
+
     console.log("Creating new quote:", newQuote);
-    setCustomerQuotes(prev => [...prev, newQuote]);
-    setCurrentQuoteId(newQuote.id);
-    
+    setCustomerQuotes((prev: Quote[]) => [...prev, newQuote]); // Add type
+    setCurrentQuoteId(newQuote.id); // Select the new quote
+
   // Depend on activeBaseQuoteNumber now
-  }, [currentCustomer, activeBaseQuoteNumber, availableTiers]); 
+  }, [currentCustomer, activeBaseQuoteNumber, availableTiers]);
 
   const handleDeleteQuote = useCallback((quoteIdToDelete: string) => {
     console.log("Delete Quote:", quoteIdToDelete);
-    setCustomerQuotes(prevQuotes => prevQuotes.filter(q => q.id !== quoteIdToDelete));
+    const quotesAfterDeletion = customerQuotes.filter(q => q.id !== quoteIdToDelete);
+    setCustomerQuotes(quotesAfterDeletion);
     if (currentQuoteId === quoteIdToDelete) {
-      setCurrentQuoteId(_prevId => { // Marked parameter as unused
-        const remainingQuotes = customerQuotes.filter(q => q.id !== quoteIdToDelete);
-        return remainingQuotes.length > 0 ? remainingQuotes[0].id : null;
-      });
+      // Select the first remaining quote if the current one was deleted
+      setCurrentQuoteId(quotesAfterDeletion.length > 0 ? quotesAfterDeletion[0].id : null);
     }
   }, [currentQuoteId, customerQuotes]);
 
   const handleRenameQuote = useCallback((quoteIdToRename: string, newName: string) => {
     console.log("Rename Quote:", quoteIdToRename, "to:", newName);
-    setCustomerQuotes(prevQuotes => 
-      prevQuotes.map(q => q.id === quoteIdToRename ? { ...q, name: newName } : q)
+    setCustomerQuotes((prevQuotes: Quote[]) => // Add type
+      prevQuotes.map((q: Quote) => (q.id === quoteIdToRename ? { ...q, name: newName, updatedAt: new Date().toISOString() } : q)) // Add type
     );
   }, []);
 
-  const handleUpdateTask = useCallback((taskIndex: number, tierId: string, updatedTask: QuoteTask) => {
-    console.log(`[handleUpdateTask] Updating task index ${taskIndex} in tier ${tierId}`, updatedTask);
-    setCustomerQuotes(prevQuotes =>
-      prevQuotes.map(quote => {
-        if (quote.id === currentQuoteId && quote.tierTasks[tierId]) {
-          const updatedTierTasks = [...quote.tierTasks[tierId]];
+  const handleUpdateTask = useCallback((taskIndex: number, tierId: string, updatedTaskData: Partial<QuoteTask>) => {
+    console.log(`[handleUpdateTask] Updating task index ${taskIndex} in tier ${tierId}`, updatedTaskData);
+    setCustomerQuotes((prevQuotes: Quote[]) => // Add type
+      prevQuotes.map((quote: Quote) => { // Add type
+        if (quote.id === currentQuoteId && quote.tierTasks && tierId in quote.tierTasks) {
+          const updatedTierTasks = [...quote.tierTasks[tierId]]; // Shallow copy tasks for the tier
           if (taskIndex >= 0 && taskIndex < updatedTierTasks.length) {
-            updatedTierTasks[taskIndex] = updatedTask;
-            const updatedQuote = {
-              ...quote,
-              tierTasks: { ...quote.tierTasks, [tierId]: updatedTierTasks },
-              updatedAt: new Date().toISOString(),
-            };
-            // Recalculate total ONLY if the updated tier is the currently selected one
-            if (tierId === updatedQuote.selectedTierId) {
-                updatedQuote.totalPrice = recalculateQuoteTotalForSelectedTier(updatedQuote);
-            }
-            console.log(` -> Task updated, new total for quote ${quote.id} (if selected tier): ${updatedQuote.totalPrice}`);
-            // Add to history
-            addToHistory({
-              quotes: prevQuotes.map(q => q.id === currentQuoteId ? updatedQuote : q),
-              currentQuoteId,
-              customers: allCustomers
-            }, `Updated task in ${tierId}`);
-            return updatedQuote;
+             // Merge existing task with updated data
+             const mergedTask = { ...updatedTierTasks[taskIndex], ...updatedTaskData };
+             updatedTierTasks[taskIndex] = mergedTask; // Replace task in the copied array
+
+             const updatedQuote = {
+               ...quote,
+               tierTasks: { ...quote.tierTasks, [tierId]: updatedTierTasks }, // Update tierTasks with modified array
+               updatedAt: new Date().toISOString(),
+             };
+             // Recalculate total ONLY if the updated tier is the currently selected one
+             if (tierId === updatedQuote.selectedTierId) {
+                 updatedQuote.totalPrice = recalculateQuoteTotalForSelectedTier(updatedQuote);
+             }
+             console.log(` -> Task updated, new total for quote ${quote.id} (if selected tier): ${updatedQuote.totalPrice}`);
+             // TODO: Add history tracking if needed
+             return updatedQuote;
           } else {
              console.warn(`[handleUpdateTask] Invalid taskIndex ${taskIndex} for tier ${tierId}`);
           }
@@ -1280,16 +1015,16 @@ export function PricebookPage() {
         return quote;
       })
     );
-  }, [currentQuoteId, addToHistory, allCustomers]);
+  }, [currentQuoteId]);
 
   const handleUpdateAllTasks = useCallback((tierId: string, updatedTasks: QuoteTask[]) => {
       console.log(`[handleUpdateAllTasks] Updating all tasks for tier ${tierId}`, updatedTasks);
-      setCustomerQuotes(prevQuotes => 
-          prevQuotes.map(quote => {
+      setCustomerQuotes((prevQuotes: Quote[]) => // Add type
+          prevQuotes.map((quote: Quote) => { // Add type
               if (quote.id === currentQuoteId) {
                   const updatedQuote = {
                       ...quote,
-                      tierTasks: { ...quote.tierTasks, [tierId]: updatedTasks },
+                      tierTasks: { ...quote.tierTasks, [tierId]: updatedTasks }, // Replace tasks for the tier
                       updatedAt: new Date().toISOString(),
                   };
                   // Recalculate total ONLY if the updated tier is the currently selected one
@@ -1299,21 +1034,29 @@ export function PricebookPage() {
                   } else {
                       console.log(` -> All tasks updated for tier ${tierId}, but it's not the selected tier (${updatedQuote.selectedTierId}). Total remains ${updatedQuote.totalPrice}.`);
                   }
+                  // TODO: Add history tracking if needed
                   return updatedQuote;
               }
               return quote;
           })
       );
-  }, [currentQuoteId, trackAction, addToHistory, allCustomers]); // Added trackAction dependency
+  }, [currentQuoteId]);
 
   const handleReorderTasks = useCallback((tierId: string, oldIndex: number, newIndex: number) => {
     console.log("Reorder Tasks in Tier:", tierId, "from", oldIndex, "to", newIndex);
-    setCustomerQuotes(prevQuotes => 
-      prevQuotes.map(q => {
-        if (q.id === currentQuoteId && q.tierTasks[tierId]) {
+    setCustomerQuotes((prevQuotes: Quote[]) => // Add type
+      prevQuotes.map((q: Quote) => { // Add type
+        if (q.id === currentQuoteId && q.tierTasks && tierId in q.tierTasks) {
            const currentTasks = q.tierTasks[tierId];
-           const reorderedTasks = arrayMove(currentTasks, oldIndex, newIndex);
-           return { ...q, tierTasks: { ...q.tierTasks, [tierId]: reorderedTasks }, updatedAt: new Date().toISOString() };
+           // Ensure indices are valid before attempting move
+           if (oldIndex >= 0 && oldIndex < currentTasks.length && newIndex >= 0 && newIndex < currentTasks.length) {
+              const reorderedTasks = arrayMove(currentTasks, oldIndex, newIndex);
+              const updatedQuote = { ...q, tierTasks: { ...q.tierTasks, [tierId]: reorderedTasks }, updatedAt: new Date().toISOString() };
+              // TODO: Add history tracking if needed
+              return updatedQuote;
+           } else {
+               console.warn(`[handleReorderTasks] Invalid indices (old: ${oldIndex}, new: ${newIndex}) for tier ${tierId} with ${currentTasks.length} tasks.`);
+           }
         }
         return q;
       })
@@ -1323,45 +1066,80 @@ export function PricebookPage() {
   const handleDuplicateTier = useCallback((sourceTierId: string, destinationTierId: string | null, newTierName?: string) => {
     console.log("Duplicate Tier:", sourceTierId, "to", destinationTierId || "New Tier:", newTierName);
     const sourceTier = availableTiers.find(t => t.id === sourceTierId);
-    if (!sourceTier) return;
+    if (!sourceTier) {
+        console.error(`Source tier ${sourceTierId} not found.`);
+        return;
+    }
 
     if (destinationTierId) {
-      setCustomerQuotes(prevQuotes => 
-        prevQuotes.map(q => {
-          if (q.tierTasks[sourceTierId]) {
-            const sourceTasks = q.tierTasks[sourceTierId];
-            return { ...q, tierTasks: { ...q.tierTasks, [destinationTierId]: sourceTasks }, updatedAt: new Date().toISOString() };
+      // Overwrite existing tier - Copy tasks from source to destination
+      setCustomerQuotes((prevQuotes: Quote[]) => // Add type
+        prevQuotes.map((q: Quote) => { // Add type
+          if (q.id === currentQuoteId && q.tierTasks && sourceTierId in q.tierTasks && destinationTierId in q.tierTasks) {
+             // Deep copy tasks to avoid shared references if necessary, though structure might be simple enough
+             const sourceTasks = JSON.parse(JSON.stringify(q.tierTasks[sourceTierId]));
+             const updatedQuote = {
+                 ...q,
+                 tierTasks: { ...q.tierTasks, [destinationTierId]: sourceTasks },
+                 updatedAt: new Date().toISOString()
+             };
+             // Recalculate total price if the overwritten tier is the selected one
+             if (destinationTierId === updatedQuote.selectedTierId) {
+                 updatedQuote.totalPrice = recalculateQuoteTotalForSelectedTier(updatedQuote);
+             }
+             // TODO: Add history tracking if needed
+             return updatedQuote;
           }
           return q;
         })
       );
     } else {
-      const newTierId = `tier-${Date.now()}`;
+      // Create new tier
+      const newTierId = `tier-${uuidv4()}`;
       const newTier: Tier = {
-        ...sourceTier,
+        ...sourceTier, // Copy properties from source tier
         id: newTierId,
         name: newTierName || `${sourceTier.name} Copy`,
       };
-      setAvailableTiers(prevTiers => [...prevTiers, newTier]);
-      setCustomerQuotes(prevQuotes => 
-        prevQuotes.map(q => {
-          if (q.tierTasks[sourceTierId]) {
-            const sourceTasks = q.tierTasks[sourceTierId];
-            return { ...q, tierTasks: { ...q.tierTasks, [newTierId]: sourceTasks }, updatedAt: new Date().toISOString() };
+      // Add new tier to available tiers
+      setAvailableTiers((prevTiers: Tier[]) => [...prevTiers, newTier]); // Add type
+
+      // Add new tier and copy tasks in the current quote
+      setCustomerQuotes((prevQuotes: Quote[]) => // Add type
+        prevQuotes.map((q: Quote) => { // Add type
+          if (q.id === currentQuoteId && q.tierTasks && sourceTierId in q.tierTasks) {
+             // Deep copy tasks
+             const sourceTasks = JSON.parse(JSON.stringify(q.tierTasks[sourceTierId]));
+             const updatedQuote = {
+                ...q,
+                tierTasks: { ...q.tierTasks, [newTierId]: sourceTasks },
+                updatedAt: new Date().toISOString()
+             };
+             // TODO: Add history tracking if needed
+             return updatedQuote;
           }
           return q;
         })
       );
     }
-  }, [availableTiers]);
+  }, [availableTiers, currentQuoteId]);
 
   const handleClearAllTasks = useCallback((tierId: string) => {
     console.log("Clear All Tasks for Tier:", tierId);
-    setCustomerQuotes(prevQuotes => 
-      prevQuotes.map(q => {
-        if (q.id === currentQuoteId && q.tierTasks[tierId]) {
-           const newTotalPrice = 0;
-           return { ...q, tierTasks: { ...q.tierTasks, [tierId]: [] }, totalPrice: newTotalPrice, updatedAt: new Date().toISOString() };
+    setCustomerQuotes((prevQuotes: Quote[]) => // Add type
+      prevQuotes.map((q: Quote) => { // Add type
+        if (q.id === currentQuoteId && q.tierTasks && tierId in q.tierTasks) {
+           const updatedQuote = {
+               ...q,
+               tierTasks: { ...q.tierTasks, [tierId]: [] }, // Set tasks to empty array
+               updatedAt: new Date().toISOString()
+            };
+           // Recalculate total price if the cleared tier is the selected one
+            if (tierId === updatedQuote.selectedTierId) {
+                updatedQuote.totalPrice = 0; // Total becomes 0
+            }
+           // TODO: Add history tracking if needed
+           return updatedQuote;
         }
         return q;
       })
@@ -1369,100 +1147,176 @@ export function PricebookPage() {
   }, [currentQuoteId]);
 
   const handleDeleteAllQuotes = useCallback((customerId: string) => {
-    console.log(`Deleting all quotes for customer: ${customerId}`);
-    setCustomerQuotes(prev => prev.filter(q => q.customerId !== customerId));
-    if (currentCustomer?.id === customerId) {
-      setCurrentQuoteId(null);
-    }
-  }, [currentCustomer?.id]);
+    console.log(`Delete All Quotes for Customer: ${customerId}`);
+    const quotesToDelete = customerQuotes.filter(q => q.customerId === customerId);
+    if (quotesToDelete.length === 0) return; // No quotes for this customer
 
-  const handleDuplicateQuote = useCallback((quoteIdToDuplicate: string): void => {
-    console.log('Parent: Duplicating quote', quoteIdToDuplicate);
-    setCustomerQuotes(prevQuotes => {
-      const originalQuote = prevQuotes.find(q => q.id === quoteIdToDuplicate);
-      if (!originalQuote) { console.error("Quote to duplicate not found:", quoteIdToDuplicate); return prevQuotes; }
-      const relatedQuotes = prevQuotes.filter(q => q.quoteNumber === originalQuote.quoteNumber);
-      const maxSequence = Math.max(0, ...relatedQuotes.map(q => q.sequenceNumber));
-      const nextSequence = maxSequence + 1;
-      const newQuote: Quote = {
-        ...originalQuote, id: `quote-${uuidv4()}`, sequenceNumber: nextSequence,
-        name: `${originalQuote.name || originalQuote.sequenceNumber} (Copy)`, status: 'Draft',
-        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-        sentAt: undefined, acceptedAt: undefined,
-        tierTasks: JSON.parse(JSON.stringify(originalQuote.tierTasks)),
-        adjustments: JSON.parse(JSON.stringify(originalQuote.adjustments)),
-        selectedTierId: originalQuote.selectedTierId,
-        totalPrice: originalQuote.totalPrice,
-      };
-      const updatedQuotes = [...prevQuotes, newQuote];
-      setCurrentQuoteId(newQuote.id); // Select the new quote
-      return updatedQuotes;
-    });
-  }, []);
+    setCustomerQuotes((prevQuotes: Quote[]) => prevQuotes.filter(q => q.customerId !== customerId)); // Add type
+    // If the current quote belonged to this customer, reset currentQuoteId
+    if (currentQuoteId && quotesToDelete.some(q => q.id === currentQuoteId)) {
+        setCurrentQuoteId(null);
+        setActiveBaseQuoteNumber(null); // Also reset base number if relevant
+    }
+    // TODO: Add history tracking if needed
+  }, [customerQuotes, currentQuoteId]);
+
+  const handleDuplicateQuote = useCallback((quoteId: string) => {
+    console.log("Duplicate Quote:", quoteId);
+    const sourceQuote = customerQuotes.find(q => q.id === quoteId);
+    if (!sourceQuote || !currentCustomer) {
+        console.error("Cannot duplicate: Source quote or current customer not found.");
+        return;
+    }
+
+    const currentSequenceNumbers = customerQuotes
+        .filter(q => q.customerId === currentCustomer.id && q.quoteNumber === sourceQuote.quoteNumber) // Filter for same base number and customer
+        .map(q => q.sequenceNumber);
+    const nextSequenceNumber = currentSequenceNumbers.length > 0 ? Math.max(...currentSequenceNumbers) + 1 : 1;
+
+    const newQuote: Quote = {
+      ...sourceQuote, // Spread existing properties
+      id: `quote-${uuidv4()}`, // New unique ID
+      sequenceNumber: nextSequenceNumber,
+      name: `${nextSequenceNumber}`, // Default name to sequence number
+      status: "Draft", // Always reset status to Draft
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      sentAt: undefined, // Clear sent/accepted dates
+      acceptedAt: undefined,
+      // Deep copy tierTasks and adjustments to prevent shared references
+      tierTasks: JSON.parse(JSON.stringify(sourceQuote.tierTasks)),
+      adjustments: JSON.parse(JSON.stringify(sourceQuote.adjustments)),
+    };
+
+    setCustomerQuotes((prev: Quote[]) => [...prev, newQuote]); // Add type
+    setCurrentQuoteId(newQuote.id); // Select the newly duplicated quote
+    // TODO: Add history tracking if needed
+  }, [customerQuotes, currentCustomer]);
 
   const handleDeleteAllTiers = useCallback(() => {
-    console.log("Deleting ALL tiers...");
-    setAvailableTiers([]); // Clear available tiers
-    setCustomerQuotes(prevQuotes =>
-      prevQuotes.map(q => {
-        const newTierTasks = {}; // All tier tasks removed
-        const newSelectedTierId = null;
-        const newTotalPrice = 0;
-        return { ...q, tierTasks: newTierTasks, selectedTierId: newSelectedTierId, totalPrice: newTotalPrice, updatedAt: new Date().toISOString() };
-      })
+    console.log("Delete All Tiers");
+    if (!currentQuoteId) return;
+
+    // Keep only the default tier (find it again in case availableTiers changed)
+    const defaultTierInstance = availableTiers.find(t => t.id === DEFAULT_TIER.id);
+    if (!defaultTierInstance) {
+        console.error("Default tier not found, cannot delete all tiers.");
+        // Maybe add the default tier back?
+        // setAvailableTiers([DEFAULT_TIER]); // Option: Reset to default
+        return;
+    }
+
+    setAvailableTiers([defaultTierInstance]); // Keep only the default tier object
+
+    // Update quotes: remove all tiers except the default, select the default tier
+    setCustomerQuotes((prevQuotes: Quote[]) => // Add type
+        prevQuotes.map((q: Quote) => { // Add type
+            if (q.id === currentQuoteId) {
+               const defaultTierTasks = q.tierTasks && DEFAULT_TIER.id in q.tierTasks
+                   ? q.tierTasks[DEFAULT_TIER.id]
+                   : []; // Get default tasks or empty array
+
+               const updatedQuote = {
+                   ...q,
+                   tierTasks: { [DEFAULT_TIER.id]: defaultTierTasks }, // Only keep default tier tasks
+                   selectedTierId: DEFAULT_TIER.id, // Select the default tier
+                   updatedAt: new Date().toISOString(),
+               };
+               // Recalculate total based on the default tier
+               updatedQuote.totalPrice = calculateTierTotalPrice(updatedQuote, DEFAULT_TIER.id);
+               // TODO: Add history tracking if needed
+               return updatedQuote;
+            }
+            return q;
+        })
     );
-  }, []);
+  }, [availableTiers, currentQuoteId]);
 
-  const handleAddOrIncrementTask = useCallback((serviceData: Service, tierId: string, wasModified: boolean) => {
-    console.log(`[handleAddOrIncrementTask] Called. Modified: ${wasModified}, Tier: ${tierId}, Service:`, serviceData);
-    if (!currentQuoteId) { console.error("Error: No current quote selected."); return; }
+  // Placeholder handler for saving the task to a library/database
+  const handleSaveTaskToLibrary = useCallback((taskData: QuoteTask, _tierId: string) => {
+    // In a real application, this would interact with your API/database
+    console.log("[handleSaveTaskToLibrary] Request to save task:", taskData, "Tier context:", _tierId);
+    // Example: Add to Supabase 'library_tasks' table
+    // try {
+    //   const { error } = await supabase.from('library_tasks').insert([taskData]);
+    //   if (error) throw error;
+    //   console.log("Task saved to library successfully.");
+    // } catch (error) {
+    //   console.error("Error saving task to library:", error);
+    // }
+  }, [supabase]); // Add supabase dependency if used
 
-    setCustomerQuotes(prevQuotes =>
-      prevQuotes.map(quote => {
+
+  // --- Placeholder Handlers for CategoryView ---
+  // These might need refinement based on CategoryView's final props/behavior
+
+  // Adds a service to MULTIPLE tiers (called from CategoryView potentially)
+  const handleAddToQuoteMultiTier = useCallback((serviceId: string, tierIds: string[], quantity: number = 1) => {
+    console.log(`[Placeholder] Add Service ${serviceId} (Qty: ${quantity}) to Tiers:`, tierIds);
+    const service = services.find(s => s.id === serviceId);
+    if (!service) {
+      console.error(`Service ${serviceId} not found.`);
+      return;
+    }
+    if (!currentQuoteId) {
+        console.warn("Cannot add task to multiple tiers: No current quote selected.");
+        return;
+    }
+
+    setCustomerQuotes((prevQuotes: Quote[]): Quote[] => // Add type
+      prevQuotes.map((quote: Quote): Quote => { // Add type
         if (quote.id === currentQuoteId) {
-          if (!(tierId in quote.tierTasks)) {
-            console.warn(`Target tier ${tierId} does not exist in quote ${quote.id}. Skipping.`);
-            return quote;
-          }
+          let updatedQuote = { ...quote }; // Start with a copy
+          let needsRecalculation = false;
 
-          const updatedQuote = JSON.parse(JSON.stringify(quote)); // Deep copy needed for modification
-          let taskAddedOrIncremented = false;
+          tierIds.forEach(tierId => {
+             if (updatedQuote.tierTasks && tierId in updatedQuote.tierTasks) {
+                const currentTasks = updatedQuote.tierTasks[tierId] || [];
+                let updatedTierTasks = [...currentTasks];
+                let taskFound = false;
 
-          // Check for existing task *only* if the service was NOT modified
-          let existingTaskIndex = -1;
-          if (!wasModified) {
-              existingTaskIndex = updatedQuote.tierTasks[tierId].findIndex(
-                  (task: QuoteTask) => task.originalServiceId === serviceData.id
-              );
-          }
+                // Check if service already exists in this tier
+                updatedTierTasks = updatedTierTasks.map((existingTask: QuoteTask) => { // Add type
+                   if (existingTask.originalServiceId === serviceId) {
+                      taskFound = true;
+                      return { ...existingTask, quantity: (existingTask.quantity || 1) + quantity };
+                   }
+                   return existingTask;
+                });
 
-          if (existingTaskIndex !== -1) {
-            // --- Increment existing task --- 
-            const existingTask = updatedQuote.tierTasks[tierId][existingTaskIndex];
-            existingTask.quantity = (existingTask.quantity ?? 1) + 1;
-            console.log(` -> Incremented quantity for task ${existingTask.name} (original ID: ${serviceData.id}) in tier ${tierId}`);
-            taskAddedOrIncremented = true;
-          } else {
-            // --- Add new task --- 
-            const newTask: QuoteTask = {
-              taskId: uuidv4(),
-              originalServiceId: serviceData.id, // Store link to original service
-              name: serviceData.name,
-              description: serviceData.description,
-              basePrice: serviceData.price,
-              quantity: 1, // Always starts at 1
-              addons: [],
-            };
-            updatedQuote.tierTasks[tierId].push(newTask);
-            console.log(` -> Added NEW task ${newTask.name} (original ID: ${serviceData.id}) to tier ${tierId}`);
-            taskAddedOrIncremented = true;
-          }
+                // If not found, add as new
+                if (!taskFound) {
+                   const newTask: QuoteTask = {
+                      taskId: `task-${uuidv4()}`,
+                      originalServiceId: service.id,
+                      name: service.name,
+                      description: service.description,
+                      basePrice: service.price,
+                      quantity: quantity,
+                      addons: [],
+                      category: service.categoryId,
+                   };
+                   updatedTierTasks.push(newTask);
+                }
 
-          // Recalculate total if the tier is selected and something changed
-          if (taskAddedOrIncremented && tierId === updatedQuote.selectedTierId) {
-            updatedQuote.totalPrice = recalculateQuoteTotalForSelectedTier(updatedQuote);
+                // Update the tierTasks for this specific tier
+                updatedQuote.tierTasks = { ...updatedQuote.tierTasks, [tierId]: updatedTierTasks };
+
+                // Mark for recalculation if this tier is the selected one
+                if (tierId === updatedQuote.selectedTierId) {
+                    needsRecalculation = true;
+                }
+             } else {
+                 console.warn(`Tier ${tierId} not found in quote ${quote.id}. Skipping addition for this tier.`);
+             }
+          }); // End forEach tierId
+
+          // Recalculate if needed
+          if (needsRecalculation) {
+             updatedQuote.totalPrice = recalculateQuoteTotalForSelectedTier(updatedQuote);
           }
           updatedQuote.updatedAt = new Date().toISOString();
+          // TODO: Add history tracking if needed
           return updatedQuote;
         }
         return quote;
@@ -1470,439 +1324,348 @@ export function PricebookPage() {
     );
   }, [currentQuoteId]);
 
-  const handleQuickAddToQuote = useCallback((serviceId: string) => {
-    const selectedTierId = currentQuote?.selectedTierId;
-    if (!selectedTierId) { console.error("[Quick Add] No tier selected."); return; }
-    const originalService = services.find(s => s.id === serviceId);
-    if (!originalService) { console.error(`[Quick Add] Original service ${serviceId} not found.`); return; }
-    console.log(`[Quick Add] Triggering add for original service ${serviceId} to tier ${selectedTierId}`);
-    // Call core logic, indicating service was NOT modified
-    handleAddOrIncrementTask(originalService, selectedTierId, false);
-  }, [currentQuote?.selectedTierId, handleAddOrIncrementTask]);
+  // Handles adding/incrementing from CategoryView (might be simplified)
+  const handleAddOrIncrementTask = useCallback((serviceData: Service, tierId: string, _wasModified: boolean, quantity: number = 1) => {
+    console.log(`[Placeholder] Add/Increment Task for Service ${serviceData.id} (Qty: ${quantity}) in Tier ${tierId}.`);
+    // This now essentially calls the multi-tier add function for a single tier
+    handleAddToQuoteMultiTier(serviceData.id, [tierId], quantity);
+  }, [handleAddToQuoteMultiTier]);
 
-  const handleAddToQuote = useCallback((serviceId: string, tierIds: string[]) => { // Multi-tier add
-    console.log(`[Multi-Add] Adding service ${serviceId} to tiers:`, tierIds);
-    const originalService = services.find(s => s.id === serviceId);
-    if (!originalService) { console.error(`[Multi-Add] Original service ${serviceId} not found.`); return; }
-    
-    // Call core logic for each selected tier, indicating service was NOT modified
-    tierIds.forEach(tierId => {
-      handleAddOrIncrementTask(originalService, tierId, false);
-    });
-  }, [handleAddOrIncrementTask]); // Depends only on the core handler
+  // Handles quick add (likely adds to the currently selected tier)
+  const handleQuickAddToQuote = useCallback((serviceId: string, quantity: number = 1) => {
+    const currentSelectedTier = currentQuote?.selectedTierId;
+    if (!currentSelectedTier) {
+      console.error("Cannot Quick Add: No tier selected.");
+      return;
+    }
+    console.log(`[Placeholder] Quick Add Service ${serviceId} (Qty: ${quantity}) to selected tier ${currentSelectedTier}.`);
+    // Call the multi-tier add function for the selected tier
+    handleAddToQuoteMultiTier(serviceId, [currentSelectedTier], quantity);
+  }, [currentQuote?.selectedTierId, handleAddToQuoteMultiTier]);
 
-  const handleAddCustomTask = useCallback((newTask: QuoteTask, _tierId: string) => { // Marked parameter as unused
-    console.log("[handleAddCustomTask] Adding:", newTask, "to Tier:", _tierId);
-     if (!currentQuoteId) { /* Error handling */ console.error("Cannot add custom task: No current quote ID."); return; }
-     // Check if task already exists if it came from library (optional, based on ID structure)
-     // For now, assume custom/library tasks can be added multiple times or have unique IDs
+  // --- End Callback Functions ---
 
-     setCustomerQuotes(prevQuotes => 
-      prevQuotes.map(quote => {
-        if (quote.id === currentQuoteId) {
-          // Use deep copy only if necessary, immer might handle this if integrated
-          const updatedQuote = JSON.parse(JSON.stringify(quote)); // Moved declaration earlier
+  // --- EFFECTS ---
 
-          // Ensure the target tier exists before pushing
-          if (!(updatedQuote.tierTasks && _tierId in updatedQuote.tierTasks)) {
-            console.warn(`[handleAddCustomTask] Target tier ${_tierId} does not exist in quote ${quote.id}. Creating tier implicitly? (Skipping for now)`);
-            // Potentially create tier here: updatedQuote.tierTasks[_tierId] = [];
-            return quote; // Skip modification if tier doesn't exist
-          }
-          
-          updatedQuote.tierTasks[_tierId].push(newTask); // Use _tierId
-          updatedQuote.updatedAt = new Date().toISOString();
-          
-          // Recalculate total price if the task was added to the currently selected tier
-          if (_tierId === updatedQuote.selectedTierId) { // Use _tierId
-             updatedQuote.totalPrice = recalculateQuoteTotalForSelectedTier(updatedQuote);
-             console.log(` -> Recalculated total price for selected tier ${_tierId}: ${updatedQuote.totalPrice}`); // Use _tierId
-          }
-          
-          console.log(` -> Added custom task ${newTask.name} (ID: ${newTask.taskId}) to tier ${_tierId}`); // Use _tierId
-          trackAction("addCustomTask", { task: newTask, tierId: _tierId }); // Use _tierId
-          // Add to history
-          addToHistory({
-            quotes: prevQuotes.map(q => q.id === currentQuoteId ? updatedQuote : q),
-            currentQuoteId,
-            customers: allCustomers
-          }, `Added custom task to ${_tierId}`);
-          return updatedQuote;
-        }
-        return quote;
-      })
-     );
-    console.log("[handleAddCustomTask] Finished adding custom task.");
-  }, [currentQuoteId, trackAction, addToHistory, allCustomers]); // Added trackAction dependency
+  // Update customer state management - Select first customer initially
+  useEffect(() => {
+    if (!currentCustomer && allCustomers.length > 0) {
+      handleCustomerSelect(allCustomers[0].id);
+    }
+  }, [currentCustomer, allCustomers, handleCustomerSelect]);
 
-  // Placeholder handler for saving the task to a library/database
-  const handleSaveTaskToLibrary = useCallback((taskData: QuoteTask, _tierId: string) => { // Marked tierId as unused
-    // In a real application, this would interact with your API/database
-    console.log("[handleSaveTaskToLibrary] Request to save task:", taskData);
-    // You might want to add it to a local state representing the library,
-    // trigger a fetch to update the library, etc.
-    // For now, we just log it. The dialog also adds it to the quote via onAddCustomTask.
-  }, []);
-
-  // --- RENDER LOGIC ---
-  const selectedCategoryData = useMemo(() => {
-    return serviceCategories.find((cat) => cat.id === selectedCategory);
-  }, [selectedCategory]);
-
-  // Filter services for the selected category
-  const categoryServices = useMemo(() => {
-    if (!selectedCategory) return [];
-    return services.filter(service => service.categoryId === selectedCategory);
-  }, [selectedCategory]);
-
-  // --- EFFECTS (Restore relevant ones) ---
+  // Effect for search
   useEffect(() => {
     if (searchQuery.trim() === '') {
       setSearchResults({ categories: serviceCategories, services: [] });
       // Don't reset selectedCategory if search is cleared
-      // setSelectedCategory(null);
       return;
     }
     const query = searchQuery.toLowerCase();
     const matchedCategories = serviceCategories.filter(cat => cat.name.toLowerCase().includes(query) || cat.description.toLowerCase().includes(query));
     const matchedServices = services.filter(svc => svc.name.toLowerCase().includes(query) || svc.description.toLowerCase().includes(query));
     setSearchResults({ categories: matchedCategories, services: matchedServices });
-    setSelectedCategory(null); // Clear category selection when searching
+    // Clear category selection *only if* search yields category results, otherwise keep selection
+    // if (matchedCategories.length > 0) { // Maybe don't clear category on search?
+    setSelectedCategory(null); // Clear category when searching
+    // }
   }, [searchQuery]);
 
-  // Update quotes and selected quote when customer changes
-  useEffect(() => {
-    if (currentCustomer) {
-      const initialQuotes = getInitialQuotesForCustomer(currentCustomer.id); 
-      const baseNumber = initialQuotes[0]?.quoteNumber;
-      if (baseNumber) { setActiveBaseQuoteNumber(baseNumber); }
-       else { const newBase = `Q-${Date.now().toString().slice(-6)}`; setActiveBaseQuoteNumber(newBase); console.warn(`Generated new base number: ${newBase}`); }
-      setCustomerQuotes(initialQuotes);
-      setCurrentQuoteId(initialQuotes[0]?.id || null);
-    } else {
-      setCustomerQuotes([]); setCurrentQuoteId(null); setActiveBaseQuoteNumber(null);
-    }
-  }, [currentCustomer]);
+  // Handler for sidebar hover
+  const handleSidebarHover = useCallback((hovering: boolean) => {
+    // Keeping sidebar expanded for now, hover doesn't change width
+    // if (!sidebarOpen) setIsHovering(hovering);
+    setIsHovering(hovering);
+  }, [sidebarOpen]); // Dependency kept for potential future use
 
-  // RESTORE: Handler for sidebar hover
-  const handleSidebarHover = useCallback((hovering: boolean) => { 
-    if (!sidebarOpen) setIsHovering(hovering); 
-  }, [sidebarOpen]);
-
-  // RESTORE: Handler for category selection
-  const handleCategorySelect = useCallback((categoryId: string | null) => { 
-    setSelectedCategory(categoryId); 
-    setSearchQuery(''); 
+  // Handler for category selection
+  const handleCategorySelect = useCallback((categoryId: string | null) => {
+    setSelectedCategory(categoryId);
+    setSearchQuery(''); // Clear search when a category is explicitly selected
   }, []);
 
-  // RESTORE: Handler to open the custom task dialog
+  // Calculate Filtered Services based on Selected Category or Search
+  const filteredServices = useMemo(() => {
+    if (searchQuery && searchResults.services.length > 0) {
+      // If searching and services match, return only matched services
+      return searchResults.services;
+    } else if (selectedCategory) {
+      // If a category is selected (and not searching, or search didn't match services), filter by category
+      return services.filter(svc =>
+        svc.categoryId?.toLowerCase() === selectedCategory.toLowerCase()
+      );
+    } else {
+      // If no category selected and not searching (or search only matched categories), return empty
+      return [];
+    }
+  }, [selectedCategory, searchQuery, searchResults.services]);
+
+  // --- Sidebar Toggle Handler ---
+  const handleToggleQuoteSidebar = useCallback(() => {
+      setIsQuoteSidebarVisible(prev => !prev);
+  }, []);
+
+  // --- Handler to Open Custom Task Dialog ---
   const handleOpenCustomTaskDialog = useCallback(() => {
-      if (!currentQuoteId) {
-          console.warn("Cannot add custom task: No quote selected.");
-          // Maybe show a toast notification here
-          return;
-       }
-       // Reset any lingering state from previous opens if needed (dialog useEffect handles this now)
-       setIsCustomTaskDialogOpen(true);
-  }, [currentQuoteId]);
+    if (!currentQuoteId) {
+        console.warn("Cannot add custom task: No quote selected.");
+        // Maybe show a toast notification here
+        return;
+     }
+     setIsCustomTaskDialogOpen(true);
+ }, [currentQuoteId]);
 
-  // Create initial state object for history
-  const historyInitialState: AppHistoryState = {
-    quotes: customerQuotes,
-    currentQuoteId,
-    customers: allCustomers
-  };
+  // Debugging logs for state changes
+  useEffect(() => console.log("Customer Quotes Updated:", customerQuotes), [customerQuotes]);
+  useEffect(() => console.log("Current Quote ID Updated:", currentQuoteId), [currentQuoteId]);
+  useEffect(() => console.log("Current Customer Updated:", currentCustomer), [currentCustomer]);
+  useEffect(() => console.log("Available Tiers Updated:", availableTiers), [availableTiers]);
 
-  // --- DEBUG: Log session on component mount ---
+  // --- DEBUG: Log Supabase session on mount ---
   useEffect(() => {
     const checkSession = async () => {
-      console.log("[PricebookPage Mount] Checking Supabase session on mount...");
-      if (!supabase) { // This check should now find supabase if context is set up
-        console.log("[PricebookPage Mount] Supabase client not available on mount.");
-        return;
+      if (!supabase) {
+          console.warn("Supabase client not available on mount.");
+          return;
       }
-      try {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        if (error) {
-          console.error("[PricebookPage Mount] Error getting session on mount:", error);
-        } else {
-          console.log("[PricebookPage Mount] Session on mount:", session);
-        }
-        
-        // Also try getting the user directly
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
-         if (userError) {
-          console.error("[PricebookPage Mount] Error getting user on mount:", userError);
-        } else {
-          console.log("[PricebookPage Mount] User on mount:", user);
-        }
-
-      } catch (catchError) {
-        console.error("[PricebookPage Mount] Exception during session check:", catchError);
+      const { data: sessionData, error } = await supabase.auth.getSession();
+      if (error) {
+        console.error("Error getting Supabase session:", error);
+      } else {
+        console.log("Supabase Session:", sessionData.session);
       }
     };
-
     checkSession();
-  }, [supabase]); // Dependency array includes supabase
+  }, [supabase]);
   // --- END DEBUG ---
 
   return (
-    <ActionHistoryProvider 
-      initialState={historyInitialState} 
-      onStateChange={handleHistoryStateChange}
-    >
-      <TooltipProvider>
-        <DashboardMenu isOpen={mainMenuOpen} onClose={() => setMainMenuOpen(false)} />
-        
-        <UndoRedoToolbar
-          isSidebarVisible={isQuoteSidebarVisible}
-          onToggleSidebar={handleToggleQuoteSidebar}
-          onUndo={undo}
-          onRedo={redo}
-          canUndo={canUndo}
-          canRedo={canRedo}
-          isProcessingAction={isProcessingAction}
-          lastActionDescription={lastActionDescription}
-          showHistoryPanel={isHistoryPanelOpen}
-          onToggleHistoryPanel={() => setIsHistoryPanelOpen(!isHistoryPanelOpen)}
-        />
+    <TooltipProvider>
+      <div className={`flex h-screen bg-background ${mainMenuOpen ? 'overflow-hidden' : ''}`}>
+          {/* Main Menu Overlay - Conditionally Rendered */}
+          {mainMenuOpen && (
+              <div
+                  className="fixed inset-0 bg-black/60 z-40 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
+                  onClick={() => setMainMenuOpen(false)} // Close on overlay click
+                  style={{ animationDuration: '200ms' }} // Adjust duration as needed
+              ></div>
+          )}
 
-        <div className="h-screen flex">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="fixed top-4 left-4 z-50"
-            onClick={() => setMainMenuOpen(!mainMenuOpen)}
-          >
-            <Menu className="h-6 w-6" />
-          </Button>
+          {/* Dashboard Menu - Always Rendered, controlled by state */}
+          <DashboardMenu isOpen={mainMenuOpen} onClose={() => setMainMenuOpen(false)} />
 
-          <div
-            className={cn(
-              "h-full bg-card border-r transition-all duration-300 ease-in-out flex flex-col",
-              (sidebarOpen || isHovering) ? "w-64" : "w-16"
-            )}
-            onMouseEnter={() => handleSidebarHover(true)}
-            onMouseLeave={() => handleSidebarHover(false)}
-          >
-            <div
-              className={cn(
-                "flex items-center border-b transition-all duration-300 ease-in-out h-16",
-                "justify-center", 
-                (sidebarOpen || isHovering) ? "px-4" : "", 
-                "sticky top-0 bg-card z-10 flex-shrink-0"
-              )}
-            >
-               {(sidebarOpen || isHovering) && (
-                  <h2 className="font-semibold transition-opacity duration-200 text-lg">
-                    Categories
-                  </h2>
-               )}
-               {!sidebarOpen && !isHovering && (
-                  <div className="w-6 h-6" />
-               )}
-            </div>
+          {/* Main Content Area */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+              {/* Header */}
+              <header className="h-14 flex items-center gap-4 border-b bg-muted/40 px-6 sticky top-0 z-30">
+                  {/* Hamburger Menu for Mobile/Tablet */}
+                  <Button
+                      variant="ghost"
+                      size="icon"
+                      className="lg:hidden -ml-4" // Hide on large screens
+                      onClick={() => setMainMenuOpen(true)}
+                      aria-label="Toggle Menu"
+                  >
+                      <Menu className="h-6 w-6" />
+                  </Button>
 
-            {(sidebarOpen || isHovering) && (
-              <div className="p-3 border-b flex-shrink-0 flex items-center space-x-2">
-                <div className="relative flex-grow">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-                  <Input
-                    placeholder="Search categories..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9 h-9"
-                  />
-                </div>
-                <Tooltip>
-                   <TooltipTrigger asChild>
-                     <div className={!currentQuoteId ? 'cursor-not-allowed' : ''}>
-                       <Button 
-                         variant="outline"
-                         size="icon" 
-                         className="h-9 w-9 flex-shrink-0" 
-                         onClick={handleOpenCustomTaskDialog}
-                         disabled={!currentQuoteId}
-                         style={!currentQuoteId ? { pointerEvents: 'none' } : {}}
-                         title="Add Custom Task to Quote"
-                       >
-                         <ClipboardPlus className="h-4 w-4" />
-                       </Button>
-                     </div>
-                   </TooltipTrigger>
-                   <TooltipContent>
-                      <p>{currentQuoteId ? 'Add Custom Task to Current Quote' : 'Select a quote first'}</p>
-                   </TooltipContent>
-                 </Tooltip>
-              </div>
-            )}
+                  {/* Search Bar - Stays in Header */}
+                  <div className="relative flex-1">
+                      <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input
+                          type="search"
+                          placeholder="Search services or categories..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="pl-8 w-full md:w-2/3 lg:w-1/2" // Responsive width
+                      />
+                  </div>
 
-            <div className="flex-grow overflow-y-auto">
-               {searchQuery.trim() === '' ? (
-                   serviceCategories.map((category) => (
-                     <button
-                       key={category.id}
-                       className={cn(
-                         "w-full text-left p-3 hover:bg-accent transition-colors duration-150 flex items-center gap-3",
-                         selectedCategory === category.id ? "bg-accent font-semibold" : "",
-                         (sidebarOpen || isHovering) ? "" : "justify-center"
-                       )}
-                       onClick={() => handleCategorySelect(category.id)}
-                       title={category.name}
-                     >
-                       <category.icon className={cn("h-5 w-5 flex-shrink-0", category.color)} />
-                       {(sidebarOpen || isHovering) && (
-                           <span className="truncate text-sm">{category.name}</span>
-                       )}
-                     </button>
-                   ))
-               ) : (
-                    <>
-                      {searchResults.categories.length > 0 && (
-                          <div className="p-2 pt-3 text-xs font-semibold text-muted-foreground">CATEGORIES</div>
+                  {/* Header Actions Area */}
+                  <div className="flex items-center gap-2 ml-auto">
+                      {/* Add other actions like Save, Notifications, User Profile */}
+                      <Button size="sm" variant="outline">Save Draft</Button>
+                      <Button size="sm">Publish Quote</Button>
+                      {/* Theme Toggle */}
+                      <ThemeToggle />
+                      {/* Sidebar Toggle Button */}
+                      <Tooltip>
+                          <TooltipTrigger asChild>
+                              <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={handleToggleQuoteSidebar}
+                                  className="h-8 w-8" // Consistent size
+                                  aria-label={isQuoteSidebarVisible ? "Hide Quote Panel" : "Show Quote Panel"}
+                              >
+                                  {isQuoteSidebarVisible ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
+                              </Button>
+                          </TooltipTrigger>
+                           <TooltipContent side="bottom">
+                              <p>{isQuoteSidebarVisible ? "Hide Quote Panel" : "Show Quote Panel"}</p>
+                          </TooltipContent>
+                      </Tooltip>
+                      {/* Removed Undo/Redo buttons from header */}
+                  </div>
+              </header>
+
+              {/* Main Content Body */}
+              <main className="flex-1 flex overflow-hidden">
+                  {/* --- Category Sidebar --- */}
+                  <div
+                      className={cn(
+                          "h-full bg-card border-r transition-all duration-300 ease-in-out flex flex-col",
+                          // Keeping sidebar expanded for now
+                          "w-64" // Fixed width
                       )}
-                      {searchResults.categories.map((category) => (
-                           <button
-                              key={category.id}
-                              className={cn("w-full text-left p-3 hover:bg-accent transition-colors duration-150 flex items-center gap-3", (sidebarOpen || isHovering) ? "" : "justify-center")}
-                              onClick={() => handleCategorySelect(category.id)} title={category.name}
-                            >
-                              <category.icon className={cn("h-5 w-5 flex-shrink-0", category.color)} />
-                              {(sidebarOpen || isHovering) && <span className="truncate text-sm">{category.name}</span>}
-                           </button>
-                      ))}
-                      {searchResults.services.length > 0 && (
-                          <div className="p-2 pt-3 text-xs font-semibold text-muted-foreground">SERVICES</div>
+                      onMouseEnter={() => handleSidebarHover(true)}
+                      onMouseLeave={() => handleSidebarHover(false)}
+                  >
+                      {/* Sidebar Header */}
+                      <div
+                          className={cn(
+                              "flex items-center border-b transition-all duration-300 ease-in-out h-[57px]", // Match header height approx
+                              "justify-between", // Use justify-between
+                              "px-4",
+                              "sticky top-0 bg-card z-10 flex-shrink-0" // Keep sticky and bg
+                          )}
+                      >
+                          <h2 className="font-semibold transition-opacity duration-200 text-lg">
+                              Categories
+                          </h2>
+                          {/* Add Custom Task Button */}
+                           <Tooltip>
+                              <TooltipTrigger asChild>
+                                  <div className={!currentQuoteId ? 'cursor-not-allowed' : ''}> {/* Wrapper for disabled state tooltip */}
+                                      <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-8 w-8" // Smaller icon button
+                                          onClick={handleOpenCustomTaskDialog}
+                                          disabled={!currentQuoteId}
+                                          style={!currentQuoteId ? { pointerEvents: 'none' } : {}} // Ensure tooltip works when disabled
+                                      >
+                                          <ClipboardPlus className="h-4 w-4" />
+                                      </Button>
+                                  </div>
+                              </TooltipTrigger>
+                              <TooltipContent side="bottom">
+                                  <p>{currentQuoteId ? 'Add Custom Task' : 'Select a quote first'}</p>
+                              </TooltipContent>
+                           </Tooltip>
+                      </div>
+
+                      {/* Category List */}
+                      <ScrollArea className="flex-grow overflow-y-auto">
+                          {searchQuery.trim() === '' ? (
+                              // Show all categories if not searching
+                              serviceCategories.map((category) => (
+                                  <button
+                                      key={category.id}
+                                      className={cn(
+                                          "w-full text-left p-3 hover:bg-accent transition-colors duration-150 flex items-center gap-3",
+                                          selectedCategory === category.id ? "bg-accent font-semibold" : "",
+                                          // Adjust display based on hover/open state if needed
+                                          " " // Always show text when sidebar is expanded
+                                      )}
+                                      onClick={() => handleCategorySelect(category.id)}
+                                      title={category.name}
+                                  >
+                                      <category.icon className={cn("h-5 w-5 flex-shrink-0", category.color)} />
+                                      <span className="truncate text-sm">{category.name}</span>
+                                  </button>
+                              ))
+                          ) : (
+                              // Show search results if searching
+                              searchResults.categories.length === 0 && searchResults.services.length === 0 ? (
+                                <div className="p-4 text-center text-sm text-muted-foreground">No results found.</div>
+                              ) : (
+                                searchResults.categories.map((category) => (
+                                    <button
+                                        key={category.id}
+                                        className={cn(
+                                            "w-full text-left p-3 hover:bg-accent transition-colors duration-150 flex items-center gap-3",
+                                            selectedCategory === category.id ? "bg-accent font-semibold" : "", // Highlight if selected even in search results
+                                            " " // Always show text
+                                        )}
+                                        onClick={() => handleCategorySelect(category.id)}
+                                        title={category.name}
+                                    >
+                                        <category.icon className={cn("h-5 w-5 flex-shrink-0", category.color)} />
+                                        <span className="truncate text-sm">{category.name}</span>
+                                    </button>
+                                ))
+                                // Do not show matched services in the category list
+                              )
+                          )}
+                      </ScrollArea>
+                  </div>
+                  {/* --- End Category Sidebar --- */}
+
+                  {/* Price Book Services (Main Area) */}
+                  <div className="flex-1 overflow-y-auto p-6">
+                      { /* Display services based on selected category or search */ }
+                      {selectedCategory || (searchQuery && searchResults.services.length > 0) ? (
+                          <CategoryView
+                              services={filteredServices} // Use filtered services
+                              tiers={availableTiers}
+                              selectedTierId={currentQuote?.selectedTierId || null}
+                              onAddToQuote={handleAddToQuoteMultiTier} // Use the multi-tier adder
+                              onAddOrIncrementTask={handleAddOrIncrementTask} // Use the unified handler
+                              onQuickAddToQuote={handleQuickAddToQuote} // Use the quick add handler
+                          />
+                      ) : (
+                          <div className="flex h-full items-center justify-center text-muted-foreground">
+                              {searchQuery ? "No services match your search." : "Select a category to view services."}
+                          </div>
                       )}
-                      {searchResults.services.map((service) => (
-                           <div key={service.id} className="p-3 text-sm text-muted-foreground flex items-center gap-3" title={service.name}>
-                               {(() => {
-                                  const cat = serviceCategories.find(c => c.id === service.categoryId);
-                                  const Icon = cat ? cat.icon : Wrench;
-                                  const color = cat ? cat.color : 'text-gray-500';
-                                  return <Icon className={cn("h-5 w-5 flex-shrink-0", color)} />;
-                                })()}
-                                {(sidebarOpen || isHovering) && <span className="truncate">{service.name}</span>}
-                           </div>
-                      ))}
-                      {searchResults.categories.length === 0 && searchResults.services.length === 0 && (
-                          <div className="p-4 text-center text-sm text-muted-foreground">No results found.</div>
-                      )}
-                    </>
-                )}
-            </div>
+                  </div>
+
+                  {/* Quote Sidebar (Right) */}
+                  {isQuoteSidebarVisible && (
+                      <CurrentQuoteSidebar
+                          quotes={customerQuotes}
+                          currentQuoteId={currentQuoteId}
+                          customer={currentCustomer}
+                          availableTiers={availableTiers}
+                          allCustomers={allCustomers} // Pass all customers for selection
+                          onQuoteSelect={handleQuoteSelect}
+                          onTierSelect={handleTierSelect}
+                          onDeleteTask={handleDeleteTask} // Pass down
+                          onAddTier={handleAddTier}
+                          onDeleteTier={handleDeleteTier}
+                          onRenameTier={handleRenameTier}
+                          onPreviewQuote={handlePreviewQuote}
+                          onUpdateCustomer={handleUpdateCustomer} // Pass down
+                          onCustomerSelect={handleCustomerSelect} // Pass down
+                          onAddQuote={handleAddQuote} // Pass down
+                          onDeleteQuote={handleDeleteQuote} // Pass down
+                          onRenameQuote={handleRenameQuote} // Pass down
+                          onUpdateTask={handleUpdateTask} // Pass down
+                          onUpdateAllTasks={handleUpdateAllTasks} // Pass down
+                          onReorderTasks={handleReorderTasks} // Pass down
+                          onDuplicateTier={handleDuplicateTier} // Pass down
+                          onClearAllTasks={handleClearAllTasks} // Pass down
+                          onDeleteAllQuotes={handleDeleteAllQuotes} // Pass down
+                          onDuplicateQuote={handleDuplicateQuote} // Pass down
+                          onDeleteAllTiers={handleDeleteAllTiers} // Pass down
+                      />
+                  )}
+              </main>
           </div>
 
-          <main className="flex-1 p-6 overflow-auto bg-muted/40">
-            {selectedCategoryData ? (
-              <div className="flex-1 overflow-auto p-6">
-                <CategoryView
-                  key={selectedCategoryData.id} 
-                  services={categoryServices}
-                  tiers={availableTiers} 
-                  selectedTierId={currentQuote?.selectedTierId || null}
-                  onAddToQuote={handleAddToQuote}
-                  onAddOrIncrementTask={handleAddOrIncrementTask}
-                  onQuickAddToQuote={handleQuickAddToQuote}
-                />
-              </div>
-            ) : (
-              <div className="flex-1 flex items-center justify-center text-muted-foreground">
-                Select a category to view services.
-              </div>
-            )}
-          </main>
-
-          {isQuoteSidebarVisible && currentCustomer && (
-            <div className="w-80 flex-shrink-0 h-screen">
-              <CurrentQuoteSidebar
-                quotes={customerQuotes}
-                currentQuoteId={currentQuoteId}
-                customer={currentCustomer}
-                availableTiers={availableTiers}
-                allCustomers={allCustomers}
-                onCustomerSelect={handleCustomerSelect}
-                onQuoteSelect={handleQuoteSelect}
-                onTierSelect={handleTierSelect}
-                onDeleteTask={handleDeleteTask}
-                onAddTier={handleAddTier}
-                onDeleteTier={handleDeleteTier}
-                onRenameTier={handleRenameTier}
-                onPreviewQuote={handlePreviewQuote}
-                onUpdateCustomer={handleUpdateCustomer}
-                onAddQuote={handleAddQuote}
-                onDeleteQuote={handleDeleteQuote}
-                onRenameQuote={handleRenameQuote}
-                onUpdateTask={handleUpdateTask}
-                onUpdateAllTasks={handleUpdateAllTasks}
-                onReorderTasks={handleReorderTasks}
-                onDuplicateTier={handleDuplicateTier}
-                onClearAllTasks={handleClearAllTasks}
-                onDeleteAllQuotes={handleDeleteAllQuotes}
-                onDuplicateQuote={handleDuplicateQuote}
-                onDeleteAllTiers={handleDeleteAllTiers}
-              />
-            </div>
-          )}
-        </div>
-        <AddCustomTaskDialog 
-          isOpen={isCustomTaskDialogOpen}
-          onOpenChange={setIsCustomTaskDialogOpen}
-          availableTiers={availableTiers}
-          currentQuoteSelectedTierId={currentQuote?.selectedTierId || null}
-          onAddCustomTask={handleAddCustomTask}
-          onSaveTaskToLibrary={handleSaveTaskToLibrary}
-      />
-        {/* History Panel */}
-        <ActionHistoryPanel 
-          isOpen={isHistoryPanelOpen}
-          onClose={() => setIsHistoryPanelOpen(false)}
-          onUndo={undo}
-          onRedo={redo}
-          canUndo={canUndo}
-          canRedo={canRedo}
-        />
+         {/* Custom Task Dialog */}
+          <AddCustomTaskDialog
+            isOpen={isCustomTaskDialogOpen}
+            onOpenChange={setIsCustomTaskDialogOpen}
+            availableTiers={availableTiers}
+            currentQuoteSelectedTierId={currentQuote?.selectedTierId || null}
+            onAddCustomTask={handleAddCustomTask} // Use the correct handler
+            onSaveTaskToLibrary={handleSaveTaskToLibrary} // Pass the placeholder save function
+          />
+      </div>
     </TooltipProvider>
-    </ActionHistoryProvider>
   );
 }
 
-// Create a component that wraps PageHeaderActions and implements the undo/redo functionality
-function UndoRedoToolbar({
-  isSidebarVisible,
-  onToggleSidebar,
-  onUndo,
-  onRedo,
-  canUndo,
-  canRedo,
-  isProcessingAction,
-  lastActionDescription,
-  showHistoryPanel,
-  onToggleHistoryPanel,
-}: {
-  isSidebarVisible: boolean;
-  onToggleSidebar: () => void;
-  onUndo: () => void;
-  onRedo: () => void;
-  canUndo: boolean;
-  canRedo: boolean;
-  isProcessingAction: boolean;
-  lastActionDescription: string;
-  showHistoryPanel: boolean;
-  onToggleHistoryPanel: () => void;
-}) {
-  return (
-    <PageHeaderActions
-      isSidebarVisible={isSidebarVisible}
-      onToggleSidebar={onToggleSidebar}
-      onUndo={onUndo}
-      onRedo={onRedo}
-      canUndo={canUndo}
-      canRedo={canRedo}
-      isProcessingAction={isProcessingAction}
-      lastActionDescription={lastActionDescription}
-      onToggleHistoryPanel={onToggleHistoryPanel}
-      showHistoryPanel={showHistoryPanel}
-    />
-  );
-} 
+// --- Removed UndoRedoToolbar Component Definition (Handled by PageHeaderActions or similar) ---
