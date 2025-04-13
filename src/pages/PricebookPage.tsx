@@ -39,7 +39,6 @@ import { CurrentQuoteSidebar } from '@/components/pricebook/CurrentQuoteSidebar'
 import { Quote, Customer, Tier, QuoteTask, Addon } from '@/types/quote';
 import { v4 as uuidv4 } from 'uuid';
 import { useSupabaseClient } from '@supabase/auth-helpers-react';
-import { Session } from '@supabase/auth-helpers-react';
 
 // --- Define Default Tier Constant ---
 const DEFAULT_TIER: Tier = {
@@ -131,23 +130,23 @@ const getInitialQuotesForCustomer = (customerId: string): Quote[] => {
         name: "Initial Reno Consult",
         customerId: 'cust-2',
         status: 'Sent',
-        tierTasks: { 
+        tierTasks: {
           'tier-bronze': [{
-            taskId: 'task-consult', 
-            name: 'Consultation', 
+            taskId: 'task-consult',
+            name: 'Consultation',
             description: 'Initial consultation',
-            basePrice: 150, 
+            basePrice: 150,
             addons: []
-          }], 
-          'tier-silver': [], 
-          'tier-gold': [] 
+          }],
+          'tier-silver': [],
+          'tier-gold': []
         },
         selectedTierId: 'tier-bronze',
         adjustments: [],
         totalPrice: 150,
-        createdAt: new Date(Date.now() - 86400000*2).toISOString(), 
+        createdAt: new Date(Date.now() - 86400000*2).toISOString(),
         updatedAt: new Date(Date.now() - 86400000*2).toISOString(),
-        sentAt: new Date(Date.now() - 86400000).toISOString(), 
+        sentAt: new Date(Date.now() - 86400000).toISOString(),
       }
     ];
   }
@@ -157,9 +156,9 @@ const getInitialQuotesForCustomer = (customerId: string): Quote[] => {
 
 // Define a list of potential color names for new tiers
 const TIER_COLORS: string[] = [
-  "Red", "Blue", "Green", "Yellow", "Purple", "Orange", 
-  "Pink", "Cyan", "Magenta", "Lime", "Teal", "Indigo", 
-  "Maroon", "Navy", "Olive" 
+  "Red", "Blue", "Green", "Yellow", "Purple", "Orange",
+  "Pink", "Cyan", "Magenta", "Lime", "Teal", "Indigo",
+  "Maroon", "Navy", "Olive"
   // Add more colors as needed
 ];
 
@@ -211,9 +210,9 @@ const serviceCategories: ServiceCategory[] = [
     color: 'text-red-500',
     description: 'Hot water system repairs and installations',
     subcategories: [
-      { 
-        id: 'hw-electric', 
-        name: 'Electric Systems', 
+      {
+        id: 'hw-electric',
+        name: 'Electric Systems',
         subSubcategories: [
           { id: 'hw-elec-replace', name: 'Replacement' },
           { id: 'hw-elec-repair', name: 'Repair' },
@@ -277,10 +276,10 @@ interface AddCustomTaskDialogProps {
   onSaveTaskToLibrary: (task: QuoteTask, tierId: string) => void; // Added prop
 }
 
-function AddCustomTaskDialog({ 
-  isOpen, 
-  onOpenChange, 
-  availableTiers, 
+function AddCustomTaskDialog({
+  isOpen,
+  onOpenChange,
+  availableTiers,
   currentQuoteSelectedTierId,
   onAddCustomTask,
   onSaveTaskToLibrary // Receive the prop
@@ -322,9 +321,9 @@ function AddCustomTaskDialog({
   const handleAddTaskToQuoteDialog = () => {
     const price = parseFloat(taskPrice);
     if (taskName.trim() && !isNaN(price) && selectedTierId) {
-    const newTask: QuoteTask = {
-      taskId: `custom-${uuidv4()}`,
-      name: taskName.trim(),
+      const newTask: QuoteTask = {
+        taskId: `custom-${uuidv4()}`,
+        name: taskName.trim(),
         description: taskDescription.trim(),
         basePrice: price,
         category: CUSTOM_CATEGORY_NAME, // Assign to custom category
@@ -333,7 +332,7 @@ function AddCustomTaskDialog({
       };
       onAddCustomTask(newTask, selectedTierId); // Call the parent's handler
       closeAndReset(); // Close and reset form
-      } else {
+    } else {
       // Basic validation feedback (consider using a more robust validation library)
       alert("Please enter a valid task name, price, and select a tier.");
     }
@@ -357,7 +356,7 @@ function AddCustomTaskDialog({
       // 2. Add to current quote
       onAddCustomTask(newTask, selectedTierId); // Call the parent's handler
       // 3. Close and reset
-      closeAndReset(); 
+      closeAndReset();
     } else {
       alert("Please enter a valid task name and price.");
     }
@@ -413,66 +412,66 @@ function AddCustomTaskDialog({
             <Label htmlFor="task-name" className="text-right">
               Name*
             </Label>
-              <div className="col-span-3 flex items-center gap-1.5"> 
-                <Input 
+             <div className="col-span-3 flex items-center gap-1.5">
+                <Input
                   id="task-name"
-                  value={taskName} 
-                  onChange={(e) => setTaskName(e.target.value)} 
-                  className="flex-grow" 
+                  value={taskName}
+                  onChange={(e) => setTaskName(e.target.value)}
+                  className="flex-grow"
                   placeholder="e.g., Special Consultation Fee"
                 />
                  <Tooltip>
                    <TooltipTrigger asChild>
-                <Button 
-                  type="button" 
-                  variant="ghost" 
-                  size="icon" 
-                  className="h-8 w-8 text-purple-500 hover:bg-purple-100 disabled:opacity-50" 
-                  onClick={handleEnhanceName} 
-                  disabled={!taskName.trim() || isEnhancingName}
-                >
-                  <Sparkles className={`h-4 w-4 ${isEnhancingName ? 'animate-pulse' : ''}`} />
-                </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-purple-500 hover:bg-purple-100 disabled:opacity-50"
+                        onClick={handleEnhanceName}
+                        disabled={!taskName.trim() || isEnhancingName}
+                      >
+                        <Sparkles className={`h-4 w-4 ${isEnhancingName ? 'animate-pulse' : ''}`} />
+                      </Button>
                    </TooltipTrigger>
                    <TooltipContent>
                      <p>Enhance Name with AI</p>
                    </TooltipContent>
                  </Tooltip>
-              </div>
-            </div>
+             </div>
+          </div>
            {/* Description Textarea with AI Button */}
           <div className="grid grid-cols-4 items-start gap-4"> {/* Use items-start for multiline */}
             <Label htmlFor="task-description" className="text-right pt-2"> {/* Add padding-top */}
               Description
             </Label>
-              <div className="col-span-3 flex items-start gap-1.5"> 
-                 <Textarea 
+             <div className="col-span-3 flex items-start gap-1.5">
+                <Textarea
                   id="task-description"
                   value={taskDescription}
                   onChange={(e) => setTaskDescription(e.target.value)}
-                    className="flex-grow" 
+                  className="flex-grow"
                   placeholder="(Optional) Add more details about the task"
-                    rows={3} 
-                 />
+                  rows={3}
+                />
                  <Tooltip>
                    <TooltipTrigger asChild>
-                 <Button 
-                  type="button" 
-                  variant="ghost" 
-                  size="icon" 
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
                         className="h-8 w-8 text-purple-500 hover:bg-purple-100 disabled:opacity-50 mt-1.5" // Align button slightly lower
                         onClick={handleGenerateDescription}
                         disabled={!taskName.trim() || isGeneratingDesc} // Disable if no name or generating
                       >
                         <Sparkles className={`h-4 w-4 ${isGeneratingDesc ? 'animate-pulse' : ''}`} />
-                 </Button>
+                      </Button>
                    </TooltipTrigger>
                    <TooltipContent>
                      <p>Generate Description with AI (uses Name)</p>
                    </TooltipContent>
                  </Tooltip>
-              </div>
-            </div>
+             </div>
+          </div>
            {/* Price Input */}
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="task-price" className="text-right">
@@ -488,17 +487,17 @@ function AddCustomTaskDialog({
               step="0.01"
               required // Add required attribute
             />
-            </div>
+          </div>
            {/* Tier Selection */}
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="task-tier" className="text-right">
               Add to Tier*
             </Label>
             <Select value={selectedTierId} onValueChange={setSelectedTierId} required>
-                 <SelectTrigger className="col-span-3">
-                   <SelectValue placeholder="Select a tier..." />
-                 </SelectTrigger>
-                 <SelectContent>
+              <SelectTrigger className="col-span-3">
+                <SelectValue placeholder="Select a tier..." />
+              </SelectTrigger>
+              <SelectContent>
                 {availableTiers.length > 0 ? (
                   availableTiers.map((tier) => (
                     <SelectItem key={tier.id} value={tier.id}>
@@ -508,17 +507,17 @@ function AddCustomTaskDialog({
                 ) : (
                   <SelectItem value="" disabled>No tiers available</SelectItem>
                 )}
-                 </SelectContent>
-               </Select>
-             </div>
+              </SelectContent>
+            </Select>
+          </div>
            {/* Hidden File Input and Image Upload Button */}
             <input type="file" id="task-image-upload" accept="image/*" className="hidden" onChange={(e) => console.log("File selected:", e.target.files)} />
             <div className="grid grid-cols-4 items-center gap-4">
                <Label className="text-right">Image</Label>
                <Button variant="outline" onClick={handleImageButtonClick} className="col-span-3">
                  <Camera className="mr-2 h-4 w-4" /> Upload Image
-            </Button>
-                </div>
+               </Button>
+            </div>
           {/* Save to Library Checkbox - currently removed */}
           {/*
            <div className="grid grid-cols-4 items-center gap-4">
@@ -534,18 +533,18 @@ function AddCustomTaskDialog({
                <label htmlFor="save-library" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
                  Save this task to library for future use
                </label>
-                         </div>
-                       </div>
+              </div>
+           </div>
            */}
-                       </div>
+        </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
-                           </Button>
+          </Button>
           {/* Conditional Button Text - Call the correct handler */}
           <Button onClick={handleAddTaskToQuoteDialog} disabled={!taskName.trim() || isNaN(parseFloat(taskPrice)) || !selectedTierId}>
             Add Task to Quote
-                     </Button>
+          </Button>
            {/* Add "Save to Library & Add" button if needed - currently commented out */}
           {/*
            <Button onClick={handleSaveToLibraryAndQuote} disabled={!taskName.trim() || isNaN(parseFloat(taskPrice)) || !selectedTierId}>
@@ -561,16 +560,16 @@ function AddCustomTaskDialog({
 // Helper function to recalculate total price for a specific tier
 function calculateTierTotalPrice(quote: Quote, tierId: string): number {
   if (!quote || !quote.tierTasks || !quote.tierTasks[tierId]) {
-      return 0;
-    }
+    return 0;
+  }
   const tierTasks = quote.tierTasks[tierId];
   return tierTasks.reduce((sum, task) => {
     const basePrice = Number(task.basePrice) || 0;
     const quantity = Number(task.quantity) || 1;
     const addonTotal = task.addons?.reduce((addonSum, addon) => addonSum + (Number(addon.price) || 0), 0) ?? 0;
     const taskTotal = (basePrice + addonTotal) * quantity;
-      return sum + taskTotal;
-    }, 0);
+    return sum + taskTotal;
+  }, 0);
 }
 
 // Helper function to recalculate total for the currently selected tier
@@ -583,7 +582,7 @@ function recalculateQuoteTotalForSelectedTier(quote: Quote): number {
 
 // --- Main Pricebook Page Component ---
 export function PricebookPage() {
-  const [selectedCategory, setSelectedCategory] = useState<ServiceCategory | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [sidebarOpen, _setSidebarOpen] = useState(true); // Keep sidebar open by default for now
   const [mainMenuOpen, setMainMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -600,7 +599,7 @@ export function PricebookPage() {
   const [isQuoteSidebarVisible, setIsQuoteSidebarVisible] = useState(true);
   const [allCustomers, setAllCustomers] = useState<Customer[]>(mockCustomers);
   const [currentCustomer, setCurrentCustomer] = useState<Customer | null>(allCustomers[0] || null);
-  const [customerQuotes, setCustomerQuotes] = useState<Quote[]>(() => 
+  const [customerQuotes, setCustomerQuotes] = useState<Quote[]>(() =>
     currentCustomer ? getInitialQuotesForCustomer(currentCustomer.id) : []
   );
   const [currentQuoteId, setCurrentQuoteId] = useState<string | null>(
@@ -611,10 +610,6 @@ export function PricebookPage() {
   const [isCustomTaskDialogOpen, setIsCustomTaskDialogOpen] = useState(false);
 
   const supabase = useSupabaseClient();
-  const [session, setSession] = useState<Session | null>(null);
-
-  const [allServices, setAllServices] = useState<Service[]>(services);
-  const [filteredServices, setFilteredServices] = useState<Service[]>([]);
 
   // --- Calculate Current Quote ---
   const currentQuote = useMemo(() => {
@@ -750,48 +745,48 @@ export function PricebookPage() {
 
   const handleDeleteTask = useCallback((taskIndex: number, tierId: string) => {
       console.log(`[PricebookPage] Deleting task index ${taskIndex} from tier ${tierId}`);
-    if (!currentQuoteId) {
+      if (!currentQuoteId) {
           console.warn("Cannot delete task: No current quote selected.");
-      return;
-    }
+          return;
+      }
 
       setCustomerQuotes((prevQuotes: Quote[]) => // Add type
           prevQuotes.map((quote: Quote) => { // Add type
-        if (quote.id === currentQuoteId) {
-          if (!quote.tierTasks || !(tierId in quote.tierTasks)) {
+              if (quote.id === currentQuoteId) {
+                  if (!quote.tierTasks || !(tierId in quote.tierTasks)) {
                       console.warn(`Tier ${tierId} not found in quote ${quote.id}`);
                       return quote; // Tier doesn't exist, return unchanged
-          }
+                  }
 
                   const currentTasks = quote.tierTasks[tierId];
-          if (taskIndex < 0 || taskIndex >= currentTasks.length) {
+                  if (taskIndex < 0 || taskIndex >= currentTasks.length) {
                       console.warn(`Invalid task index ${taskIndex} for tier ${tierId}`);
                       return quote; // Index out of bounds
-          }
+                  }
 
                   // Create new tasks array excluding the task at taskIndex
-          const updatedTasks = currentTasks.filter((_, index) => index !== taskIndex);
+                  const updatedTasks = currentTasks.filter((_, index) => index !== taskIndex);
 
                   // Create updated tierTasks object
                   const updatedTierTasks = { ...quote.tierTasks, [tierId]: updatedTasks };
 
                   // Create updated quote object
                   const updatedQuote = {
-            ...quote,
-            tierTasks: updatedTierTasks,
-            updatedAt: new Date().toISOString(),
-          };
+                      ...quote,
+                      tierTasks: updatedTierTasks,
+                      updatedAt: new Date().toISOString(),
+                  };
 
                   // Recalculate total price if the deletion happened in the selected tier
                   if (tierId === updatedQuote.selectedTierId) {
-             updatedQuote.totalPrice = recalculateQuoteTotalForSelectedTier(updatedQuote);
+                      updatedQuote.totalPrice = recalculateQuoteTotalForSelectedTier(updatedQuote);
                       console.log(` -> Task deleted, new total for quote ${quote.id}: ${updatedQuote.totalPrice}`);
                   }
-          return updatedQuote;
-        }
-        return quote; // Return other quotes unchanged
-      })
-    );
+                  return updatedQuote;
+              }
+              return quote; // Return other quotes unchanged
+          })
+      );
   }, [currentQuoteId]);
 
   const handleQuoteSelect = useCallback((quoteId: string) => {
@@ -825,18 +820,18 @@ export function PricebookPage() {
     setAvailableTiers((prevTiers: Tier[]) => { // Add type
        const existingNames = prevTiers.map(t => t.name.toLowerCase());
        let newTierName = "New Tier";
-          let counter = 1;
+       let counter = 1;
        while (existingNames.includes(newTierName.toLowerCase())) {
          newTierName = `New Tier ${counter++}`;
-      }
+       }
 
-      const newTier: Tier = {
+       const newTier: Tier = {
          id: `tier-${uuidv4()}`,
-        name: newTierName,
-        multiplier: 1.0,
-        warranty: "Standard",
-        perks: [],
-      };
+         name: newTierName,
+         multiplier: 1.0,
+         warranty: "Standard",
+         perks: [],
+       };
        const updatedTiers = [...prevTiers, newTier];
 
        // Add the new tier key to all existing quotes' tierTasks
@@ -951,27 +946,27 @@ export function PricebookPage() {
     const newQuote: Quote = {
       id: `quote-${uuidv4()}`,
       quoteNumber: baseQuoteNumberToUse, // Use the state variable
-      sequenceNumber: nextSequenceNumber, 
-      name: `${nextSequenceNumber}`, 
+      sequenceNumber: nextSequenceNumber,
+      name: `${nextSequenceNumber}`,
       customerId: currentCustomer.id,
       status: "Draft",
       tierTasks: availableTiers.reduce((acc, tier) => {
         acc[tier.id] = [];
         return acc;
-      }, {} as { [key: string]: QuoteTask[] }), 
+      }, {} as { [key: string]: QuoteTask[] }),
       selectedTierId: availableTiers[0]?.id || null, // Select first available tier or null
       adjustments: [],
       totalPrice: 0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    
+
     console.log("Creating new quote:", newQuote);
     setCustomerQuotes((prev: Quote[]) => [...prev, newQuote]); // Add type
     setCurrentQuoteId(newQuote.id); // Select the new quote
-    
+
   // Depend on activeBaseQuoteNumber now
-  }, [currentCustomer, activeBaseQuoteNumber, availableTiers]); 
+  }, [currentCustomer, activeBaseQuoteNumber, availableTiers]);
 
   const handleDeleteQuote = useCallback((quoteIdToDelete: string) => {
     console.log("Delete Quote:", quoteIdToDelete);
@@ -1001,18 +996,18 @@ export function PricebookPage() {
              const mergedTask = { ...updatedTierTasks[taskIndex], ...updatedTaskData };
              updatedTierTasks[taskIndex] = mergedTask; // Replace task in the copied array
 
-            const updatedQuote = {
-              ...quote,
+             const updatedQuote = {
+               ...quote,
                tierTasks: { ...quote.tierTasks, [tierId]: updatedTierTasks }, // Update tierTasks with modified array
-              updatedAt: new Date().toISOString(),
-            };
-            // Recalculate total ONLY if the updated tier is the currently selected one
-            if (tierId === updatedQuote.selectedTierId) {
-                updatedQuote.totalPrice = recalculateQuoteTotalForSelectedTier(updatedQuote);
-            }
-            console.log(` -> Task updated, new total for quote ${quote.id} (if selected tier): ${updatedQuote.totalPrice}`);
+               updatedAt: new Date().toISOString(),
+             };
+             // Recalculate total ONLY if the updated tier is the currently selected one
+             if (tierId === updatedQuote.selectedTierId) {
+                 updatedQuote.totalPrice = recalculateQuoteTotalForSelectedTier(updatedQuote);
+             }
+             console.log(` -> Task updated, new total for quote ${quote.id} (if selected tier): ${updatedQuote.totalPrice}`);
              // TODO: Add history tracking if needed
-            return updatedQuote;
+             return updatedQuote;
           } else {
              console.warn(`[handleUpdateTask] Invalid taskIndex ${taskIndex} for tier ${tierId}`);
           }
@@ -1055,7 +1050,7 @@ export function PricebookPage() {
            const currentTasks = q.tierTasks[tierId];
            // Ensure indices are valid before attempting move
            if (oldIndex >= 0 && oldIndex < currentTasks.length && newIndex >= 0 && newIndex < currentTasks.length) {
-           const reorderedTasks = arrayMove(currentTasks, oldIndex, newIndex);
+              const reorderedTasks = arrayMove(currentTasks, oldIndex, newIndex);
               const updatedQuote = { ...q, tierTasks: { ...q.tierTasks, [tierId]: reorderedTasks }, updatedAt: new Date().toISOString() };
               // TODO: Add history tracking if needed
               return updatedQuote;
@@ -1159,7 +1154,7 @@ export function PricebookPage() {
     setCustomerQuotes((prevQuotes: Quote[]) => prevQuotes.filter(q => q.customerId !== customerId)); // Add type
     // If the current quote belonged to this customer, reset currentQuoteId
     if (currentQuoteId && quotesToDelete.some(q => q.id === currentQuoteId)) {
-      setCurrentQuoteId(null);
+        setCurrentQuoteId(null);
         setActiveBaseQuoteNumber(null); // Also reset base number if relevant
     }
     // TODO: Add history tracking if needed
@@ -1178,7 +1173,7 @@ export function PricebookPage() {
         .map(q => q.sequenceNumber);
     const nextSequenceNumber = currentSequenceNumbers.length > 0 ? Math.max(...currentSequenceNumbers) + 1 : 1;
 
-      const newQuote: Quote = {
+    const newQuote: Quote = {
       ...sourceQuote, // Spread existing properties
       id: `quote-${uuidv4()}`, // New unique ID
       sequenceNumber: nextSequenceNumber,
@@ -1274,7 +1269,7 @@ export function PricebookPage() {
           let updatedQuote = { ...quote }; // Start with a copy
           let needsRecalculation = false;
 
-    tierIds.forEach(tierId => {
+          tierIds.forEach(tierId => {
              if (updatedQuote.tierTasks && tierId in updatedQuote.tierTasks) {
                 const currentTasks = updatedQuote.tierTasks[tierId] || [];
                 let updatedTierTasks = [...currentTasks];
@@ -1326,7 +1321,7 @@ export function PricebookPage() {
         }
         return quote;
       })
-     );
+    );
   }, [currentQuoteId]);
 
   // Handles adding/incrementing from CategoryView (might be simplified)
@@ -1377,18 +1372,33 @@ export function PricebookPage() {
   }, [searchQuery]);
 
   // Handler for sidebar hover
-  const handleSidebarHover = useCallback((hovering: boolean) => { 
+  const handleSidebarHover = useCallback((hovering: boolean) => {
     // Keeping sidebar expanded for now, hover doesn't change width
     // if (!sidebarOpen) setIsHovering(hovering);
     setIsHovering(hovering);
   }, [sidebarOpen]); // Dependency kept for potential future use
 
-  // --- Category Selection Handler ---
-  const handleCategorySelect = useCallback((categoryId: string) => {
-    const category = serviceCategories.find(c => c.id === categoryId);
-    setSelectedCategory(category || null); // Set the found category object or null
+  // Handler for category selection
+  const handleCategorySelect = useCallback((categoryId: string | null) => {
+    setSelectedCategory(categoryId);
     setSearchQuery(''); // Clear search when a category is explicitly selected
   }, []);
+
+  // Calculate Filtered Services based on Selected Category or Search
+  const filteredServices = useMemo(() => {
+    if (searchQuery && searchResults.services.length > 0) {
+      // If searching and services match, return only matched services
+      return searchResults.services;
+    } else if (selectedCategory) {
+      // If a category is selected (and not searching, or search didn't match services), filter by category
+      return services.filter(svc =>
+        svc.categoryId?.toLowerCase() === selectedCategory.toLowerCase()
+      );
+    } else {
+      // If no category selected and not searching (or search only matched categories), return empty
+      return [];
+    }
+  }, [selectedCategory, searchQuery, searchResults.services]);
 
   // --- Sidebar Toggle Handler ---
   const handleToggleQuoteSidebar = useCallback(() => {
@@ -1397,13 +1407,13 @@ export function PricebookPage() {
 
   // --- Handler to Open Custom Task Dialog ---
   const handleOpenCustomTaskDialog = useCallback(() => {
-      if (!currentQuoteId) {
-          console.warn("Cannot add custom task: No quote selected.");
-          // Maybe show a toast notification here
-          return;
-       }
-       setIsCustomTaskDialogOpen(true);
-  }, [currentQuoteId]);
+    if (!currentQuoteId) {
+        console.warn("Cannot add custom task: No quote selected.");
+        // Maybe show a toast notification here
+        return;
+     }
+     setIsCustomTaskDialogOpen(true);
+ }, [currentQuoteId]);
 
   // Debugging logs for state changes
   useEffect(() => console.log("Customer Quotes Updated:", customerQuotes), [customerQuotes]);
@@ -1416,12 +1426,12 @@ export function PricebookPage() {
     const checkSession = async () => {
       if (!supabase) {
           console.warn("Supabase client not available on mount.");
-        return;
+          return;
       }
       const { data: sessionData, error } = await supabase.auth.getSession();
-        if (error) {
+      if (error) {
         console.error("Error getting Supabase session:", error);
-        } else {
+      } else {
         console.log("Supabase Session:", sessionData.session);
       }
     };
@@ -1429,34 +1439,8 @@ export function PricebookPage() {
   }, [supabase]);
   // --- END DEBUG ---
 
-  const handleToggleFavorite = useCallback((serviceId: string, isFavorite: boolean) => {
-    setAllServices(prevServices => 
-      prevServices.map(service => 
-        service.id === serviceId ? { ...service, isFavorite } : service
-      )
-    );
-    // TODO: Add API call here to persist the favorite status to the backend
-    console.log(`Toggled favorite for ${serviceId} to ${isFavorite}`);
-  }, []);
-
-  useEffect(() => {
-    // Filter services based on the selected category
-    if (selectedCategory) {
-      if (selectedCategory.id === 'favourites') {
-        // Show only favorited services
-        setFilteredServices(allServices.filter(service => service.isFavorite));
-      } else {
-        // Show services matching the selected category ID
-        setFilteredServices(allServices.filter(service => service.categoryId === selectedCategory.id));
-      }
-    } else {
-      // If no category is selected, show all services (or handle as needed)
-      setFilteredServices(allServices); // Show all by default, or an empty array: []
-    }
-  }, [selectedCategory, allServices]); // Depend on allServices now
-
   return (
-      <TooltipProvider>
+    <TooltipProvider>
       <div className={`flex h-screen bg-background ${mainMenuOpen ? 'overflow-hidden' : ''}`}>
           {/* Main Menu Overlay - Conditionally Rendered */}
           {mainMenuOpen && (
@@ -1468,8 +1452,8 @@ export function PricebookPage() {
           )}
 
           {/* Dashboard Menu - Always Rendered, controlled by state */}
-        <DashboardMenu isOpen={mainMenuOpen} onClose={() => setMainMenuOpen(false)} />
-        
+          <DashboardMenu isOpen={mainMenuOpen} onClose={() => setMainMenuOpen(false)} />
+
           {/* Main Content Area */}
           <div className="flex-1 flex flex-col overflow-hidden">
               {/* Header */}
@@ -1507,15 +1491,15 @@ export function PricebookPage() {
                       {/* Sidebar Toggle Button */}
                       <Tooltip>
                           <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
+                              <Button
+                                  variant="ghost"
+                                  size="icon"
                                   onClick={handleToggleQuoteSidebar}
                                   className="h-8 w-8" // Consistent size
                                   aria-label={isQuoteSidebarVisible ? "Hide Quote Panel" : "Show Quote Panel"}
-          >
+                              >
                                   {isQuoteSidebarVisible ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
-          </Button>
+                              </Button>
                           </TooltipTrigger>
                            <TooltipContent side="bottom">
                               <p>{isQuoteSidebarVisible ? "Hide Quote Panel" : "Show Quote Panel"}</p>
@@ -1528,129 +1512,130 @@ export function PricebookPage() {
               {/* Main Content Body */}
               <main className="flex-1 flex overflow-hidden">
                   {/* --- Category Sidebar --- */}
-          <div
-            className={cn(
-              "h-full bg-card border-r transition-all duration-300 ease-in-out flex flex-col",
+                  <div
+                      className={cn(
+                          "h-full bg-card border-r transition-all duration-300 ease-in-out flex flex-col",
                           // Keeping sidebar expanded for now
                           "w-64" // Fixed width
-            )}
-            onMouseEnter={() => handleSidebarHover(true)}
-            onMouseLeave={() => handleSidebarHover(false)}
-          >
+                      )}
+                      onMouseEnter={() => handleSidebarHover(true)}
+                      onMouseLeave={() => handleSidebarHover(false)}
+                  >
                       {/* Sidebar Header */}
-            <div
-              className={cn(
+                      <div
+                          className={cn(
                               "flex items-center border-b transition-all duration-300 ease-in-out h-[57px]", // Match header height approx
                               "justify-between", // Use justify-between
                               "px-4",
                               "sticky top-0 bg-card z-10 flex-shrink-0" // Keep sticky and bg
                           )}
                       >
-                  <h2 className="font-semibold transition-opacity duration-200 text-lg">
-                    Categories
-                  </h2>
+                          <h2 className="font-semibold transition-opacity duration-200 text-lg">
+                              Categories
+                          </h2>
                           {/* Add Custom Task Button */}
-                <Tooltip>
-                   <TooltipTrigger asChild>
+                           <Tooltip>
+                              <TooltipTrigger asChild>
                                   <div className={!currentQuoteId ? 'cursor-not-allowed' : ''}> {/* Wrapper for disabled state tooltip */}
-                       <Button 
+                                      <Button
                                           variant="ghost"
-                         size="icon" 
+                                          size="icon"
                                           className="h-8 w-8" // Smaller icon button
-                         onClick={handleOpenCustomTaskDialog}
-                         disabled={!currentQuoteId}
+                                          onClick={handleOpenCustomTaskDialog}
+                                          disabled={!currentQuoteId}
                                           style={!currentQuoteId ? { pointerEvents: 'none' } : {}} // Ensure tooltip works when disabled
-                       >
-                         <ClipboardPlus className="h-4 w-4" />
-                       </Button>
-                     </div>
-                   </TooltipTrigger>
+                                      >
+                                          <ClipboardPlus className="h-4 w-4" />
+                                      </Button>
+                                  </div>
+                              </TooltipTrigger>
                               <TooltipContent side="bottom">
                                   <p>{currentQuoteId ? 'Add Custom Task' : 'Select a quote first'}</p>
-                   </TooltipContent>
-                 </Tooltip>
-              </div>
+                              </TooltipContent>
+                           </Tooltip>
+                      </div>
 
                       {/* Category List */}
                       <ScrollArea className="flex-grow overflow-y-auto">
-               {searchQuery.trim() === '' ? (
+                          {searchQuery.trim() === '' ? (
                               // Show all categories if not searching
-                   serviceCategories.map((category) => (
-                     <button
-                       key={category.id}
-                       className={cn(
-                         "w-full text-left p-3 hover:bg-accent transition-colors duration-150 flex items-center gap-3",
-                         selectedCategory?.id === category.id ? "bg-accent font-semibold" : "", // Use optional chaining and compare IDs
+                              serviceCategories.map((category) => (
+                                  <button
+                                      key={category.id}
+                                      className={cn(
+                                          "w-full text-left p-3 hover:bg-accent transition-colors duration-150 flex items-center gap-3",
+                                          selectedCategory === category.id ? "bg-accent font-semibold" : "",
                                           // Adjust display based on hover/open state if needed
-                       )}
-                       onClick={() => handleCategorySelect(category.id)} // Keep using handleCategorySelect here
-                     >
-                       <category.icon className={cn("h-5 w-5", category.color)} />
-                           <span className="truncate text-sm">{category.name}</span>
-                     </button>
-                   ))
-               ) : (
+                                          " " // Always show text when sidebar is expanded
+                                      )}
+                                      onClick={() => handleCategorySelect(category.id)}
+                                      title={category.name}
+                                  >
+                                      <category.icon className={cn("h-5 w-5 flex-shrink-0", category.color)} />
+                                      <span className="truncate text-sm">{category.name}</span>
+                                  </button>
+                              ))
+                          ) : (
                               // Show search results if searching
                               searchResults.categories.length === 0 && searchResults.services.length === 0 ? (
                                 <div className="p-4 text-center text-sm text-muted-foreground">No results found.</div>
                               ) : (
                                 searchResults.categories.map((category) => (
-                           <button
-                              key={category.id}
+                                    <button
+                                        key={category.id}
                                         className={cn(
                                             "w-full text-left p-3 hover:bg-accent transition-colors duration-150 flex items-center gap-3",
-                                            selectedCategory?.id === category.id ? "bg-accent font-semibold" : "", // Highlight if selected even in search results
+                                            selectedCategory === category.id ? "bg-accent font-semibold" : "", // Highlight if selected even in search results
                                             " " // Always show text
                                         )}
-                                        onClick={() => handleCategorySelect(category.id)} // Keep using handleCategorySelect here
+                                        onClick={() => handleCategorySelect(category.id)}
                                         title={category.name}
-                            >
-                              <category.icon className={cn("h-5 w-5", category.color)} />
+                                    >
+                                        <category.icon className={cn("h-5 w-5 flex-shrink-0", category.color)} />
                                         <span className="truncate text-sm">{category.name}</span>
-                           </button>
+                                    </button>
                                 ))
                                 // Do not show matched services in the category list
                               )
                           )}
                       </ScrollArea>
-                           </div>
+                  </div>
                   {/* --- End Category Sidebar --- */}
 
                   {/* Price Book Services (Main Area) */}
                   <div className="flex-1 overflow-y-auto p-6">
                       { /* Display services based on selected category or search */ }
                       {selectedCategory || (searchQuery && searchResults.services.length > 0) ? (
-                <CategoryView
+                          <CategoryView
                               services={filteredServices} // Use filtered services
-                  tiers={availableTiers} 
-                  selectedTierId={currentQuote?.selectedTierId || null}
+                              tiers={availableTiers}
+                              selectedTierId={currentQuote?.selectedTierId || null}
                               onAddToQuote={handleAddToQuoteMultiTier} // Use the multi-tier adder
                               onAddOrIncrementTask={handleAddOrIncrementTask} // Use the unified handler
                               onQuickAddToQuote={handleQuickAddToQuote} // Use the quick add handler
-                              onToggleFavorite={handleToggleFavorite} // Pass down the favorite handler
                           />
                       ) : (
                           <div className="flex h-full items-center justify-center text-muted-foreground">
                               {searchQuery ? "No services match your search." : "Select a category to view services."}
-              </div>
-            )}
+                          </div>
+                      )}
                   </div>
 
                   {/* Quote Sidebar (Right) */}
                   {isQuoteSidebarVisible && (
-              <CurrentQuoteSidebar
-                quotes={customerQuotes}
-                currentQuoteId={currentQuoteId}
-                customer={currentCustomer}
-                availableTiers={availableTiers}
+                      <CurrentQuoteSidebar
+                          quotes={customerQuotes}
+                          currentQuoteId={currentQuoteId}
+                          customer={currentCustomer}
+                          availableTiers={availableTiers}
                           allCustomers={allCustomers} // Pass all customers for selection
-                onQuoteSelect={handleQuoteSelect}
-                onTierSelect={handleTierSelect}
+                          onQuoteSelect={handleQuoteSelect}
+                          onTierSelect={handleTierSelect}
                           onDeleteTask={handleDeleteTask} // Pass down
-                onAddTier={handleAddTier}
-                onDeleteTier={handleDeleteTier}
-                onRenameTier={handleRenameTier}
-                onPreviewQuote={handlePreviewQuote}
+                          onAddTier={handleAddTier}
+                          onDeleteTier={handleDeleteTier}
+                          onRenameTier={handleRenameTier}
+                          onPreviewQuote={handlePreviewQuote}
                           onUpdateCustomer={handleUpdateCustomer} // Pass down
                           onCustomerSelect={handleCustomerSelect} // Pass down
                           onAddQuote={handleAddQuote} // Pass down
@@ -1667,14 +1652,14 @@ export function PricebookPage() {
                       />
                   )}
               </main>
-        </div>
+          </div>
 
          {/* Custom Task Dialog */}
-        <AddCustomTaskDialog 
-          isOpen={isCustomTaskDialogOpen}
-          onOpenChange={setIsCustomTaskDialogOpen}
-          availableTiers={availableTiers}
-          currentQuoteSelectedTierId={currentQuote?.selectedTierId || null}
+          <AddCustomTaskDialog
+            isOpen={isCustomTaskDialogOpen}
+            onOpenChange={setIsCustomTaskDialogOpen}
+            availableTiers={availableTiers}
+            currentQuoteSelectedTierId={currentQuote?.selectedTierId || null}
             onAddCustomTask={handleAddCustomTask} // Use the correct handler
             onSaveTaskToLibrary={handleSaveTaskToLibrary} // Pass the placeholder save function
           />

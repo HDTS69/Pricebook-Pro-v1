@@ -8,7 +8,6 @@ import {
   Plus, 
   Pencil, 
   X,
-  Star,
 } from 'lucide-react';
 import { Service } from '@/lib/services';
 import { Tier } from '@/types/quote';
@@ -147,7 +146,6 @@ interface CategoryViewProps {
   onAddToQuote: (serviceId: string, tierIds: string[], quantity: number) => void;
   onAddOrIncrementTask: (serviceData: Service, tierId: string, wasModified: boolean, quantity: number) => void;
   onQuickAddToQuote: (serviceId: string, quantity: number) => void;
-  onToggleFavorite: (serviceId: string, isFavorite: boolean) => void;
 }
 
 export function CategoryView({ 
@@ -156,8 +154,7 @@ export function CategoryView({
   selectedTierId,
   onAddToQuote, 
   onAddOrIncrementTask,
-  onQuickAddToQuote,
-  onToggleFavorite
+  onQuickAddToQuote
 }: CategoryViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [checkedTiers, setCheckedTiers] = useState<Record<string, Record<string, boolean>>>({});
@@ -412,22 +409,6 @@ export function CategoryView({
                     </div>
                   </DropdownMenuContent>
                 </DropdownMenu>
-
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button 
-                      variant={service.isFavorite ? "default" : "ghost"}
-                      size="icon" 
-                      className="h-8 w-8" 
-                      onClick={() => onToggleFavorite(service.id, !service.isFavorite)}
-                    >
-                      <Star className={`h-4 w-4 ${service.isFavorite ? 'fill-current' : ''}`} /> 
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>{service.isFavorite ? 'Remove from Favorites' : 'Add to Favorites'}</p>
-                  </TooltipContent>
-                </Tooltip>
               </CardFooter>
             </Card>
           ))}
