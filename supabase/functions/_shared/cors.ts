@@ -1,7 +1,8 @@
 // supabase/functions/_shared/cors.ts
 
+// Standard CORS headers
 export const corsHeaders = {
-  'Access-Control-Allow-Origin': '*', // Allow requests from any origin (restrict in production!)
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS', // Include methods your function uses
+  'Access-Control-Allow-Origin': '*', // TODO: Restrict this in production!
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-application-name',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS', // Add other methods if needed
 }; 

@@ -1,0 +1,22 @@
+{
+  "manifest_version": 1,
+  "name": "Pricebook Pro",
+  "version": "1.0.0",
+  "description": "Boost your ServiceM8 with Pricebook Pro! Create quotes with tiered pricing (Gold, Silver, Bronze), add-ons, and on-the-spot signatures.",
+  "developer": {
+    "name": "HD Trade Services",
+    "contact_email": "admin@hdtradeservices.com.au"
+  },
+  "iconURL": null,
+  "supportURL": null,
+  "supportEmail": "admin@hdtradeservices.com.au",
+  "oauth": {
+    "scope": "read_customers manage_customers read_customer_contacts manage_customer_contacts read_jobs"
+  },
+  "addon_type": "self_hosted_web_service",
+  "activation_url": "http://localhost:5173/settings",
+  "callback_url": "https://ybkgvombhjchlcmbrizk.supabase.co/functions/v1/servicem8-oauth-callback",
+  "actions": [],
+  "menuItems": [],
+  "webhooks": []
+}

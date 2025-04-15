@@ -1,61 +1,78 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
-import type { AuthError, User } from '@supabase/supabase-js';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { supabase, syncUserProfile } from '@/lib/supabase';
+import { User, AuthError } from '@supabase/supabase-js';
 
 interface AuthState {
   user: User | null;
   loading: boolean;
   error: AuthError | null;
+  authenticated: boolean;
 }
 
 interface AuthContextType extends AuthState {
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string, metadata?: Record<string, any>) => Promise<void>;
   signOut: () => Promise<void>;
   clearError: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+interface AuthProviderProps {
+  children: ReactNode;
+}
+
+export function AuthProvider({ children }: AuthProviderProps) {
   const [state, setState] = useState<AuthState>({
     user: null,
     loading: true,
     error: null,
+    authenticated: false
   });
 
   useEffect(() => {
-    // Check active sessions and sets the user
-    const initializeAuth = async () => {
+    // Check for existing session on mount
+    const checkAuth = async () => {
       try {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        if (error) throw error;
+        const { data } = await supabase.auth.getSession();
+        const { session } = data;
         
-        setState(prev => ({
-          ...prev,
-          user: session?.user ?? null,
-          loading: false,
-        }));
+        if (session) {
+          setState(prev => ({
+            ...prev,
+            user: session.user,
+            authenticated: true,
+            loading: false
+          }));
+        } else {
+          setState(prev => ({
+            ...prev,
+            loading: false
+          }));
+        }
       } catch (error) {
-        console.error('Error initializing auth:', error);
+        console.error('Error checking auth:', error);
         setState(prev => ({
           ...prev,
-          error: error as AuthError,
           loading: false,
+          error: error as AuthError
         }));
       }
     };
 
-    initializeAuth();
+    checkAuth();
 
-    // Listen for changes on auth state
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setState(prev => ({
-        ...prev,
-        user: session?.user ?? null,
-        loading: false,
-      }));
-    });
+    // Subscribe to auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setState(prev => ({
+          ...prev,
+          user: session?.user ?? null,
+          authenticated: !!session,
+          loading: false
+        }));
+      }
+    );
 
     return () => {
       subscription.unsubscribe();
@@ -67,7 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setState(prev => ({ ...prev, loading: true, error: null }));
       const { error } = await supabase.auth.signInWithPassword({
         email,
-        password,
+        password
       });
 
       if (error) throw error;
@@ -75,7 +92,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error('Error signing in:', error);
       setState(prev => ({
         ...prev,
-        error: error as AuthError,
+        error: error as AuthError
       }));
       throw error;
     } finally {
@@ -83,21 +100,66 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const signUp = async (email: string, password: string) => {
+  const signUp = async (email: string, password: string, metadata?: Record<string, any>) => {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
-      const { error } = await supabase.auth.signUp({
+      console.log('Attempting to sign up with email:', email);
+      
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
+        options: {
+          data: metadata
+        }
       });
 
+      console.log('Supabase signUp response:', { data, error });
+      
       if (error) throw error;
+      
+      // If signup was successful and we have a user, sync with profiles table
+      if (data?.user) {
+        try {
+          // Sync user metadata with profiles table
+          await syncUserProfile(data.user.id, metadata || {});
+        } catch (syncError) {
+          console.error('Error syncing user profile:', syncError);
+          // We don't throw here to prevent blocking signup completion
+        }
+      }
     } catch (error) {
       console.error('Error signing up:', error);
-      setState(prev => ({
-        ...prev,
-        error: error as AuthError,
-      }));
+      console.log('Error details:', {
+        message: (error as any)?.message,
+        code: (error as any)?.code,
+        status: (error as any)?.status,
+      });
+      
+      // Custom error handling for email already in use
+      const authError = error as AuthError;
+      if (
+        authError?.message?.includes('User already registered') || 
+        authError?.message?.includes('already exists') ||
+        authError?.message?.includes('already in use') ||
+        authError?.message?.includes('already taken') ||
+        authError?.code === '23505' // PostgreSQL unique violation error
+      ) {
+        console.log('Detected existing user error');
+        const customError = {
+          ...authError,
+          message: 'An account with this email already exists. Please sign in instead.'
+        } as AuthError;
+        
+        setState(prev => ({
+          ...prev,
+          error: customError,
+        }));
+      } else {
+        setState(prev => ({
+          ...prev,
+          error: authError,
+        }));
+      }
       throw error;
     } finally {
       setState(prev => ({ ...prev, loading: false }));
@@ -114,8 +176,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setState(prev => ({
         ...prev,
         error: error as AuthError,
+        loading: false
       }));
-      throw error;
     } finally {
       setState(prev => ({ ...prev, loading: false }));
     }
@@ -130,16 +192,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signIn,
     signUp,
     signOut,
-    clearError,
+    clearError
   };
 
   return (
     <AuthContext.Provider value={value}>
-      {!state.loading && children}
+      {children}
     </AuthContext.Provider>
   );
 }
 
+// Hook to use auth context
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {

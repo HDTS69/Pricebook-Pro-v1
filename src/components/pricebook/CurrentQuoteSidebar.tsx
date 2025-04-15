@@ -8,7 +8,7 @@ import {
   DollarSign,
   PlusCircle,
   ChevronsUpDown,
-  X as CancelIcon,
+  X as CloseIcon,
   Trash2,
   Pencil,
   Settings2,
@@ -72,368 +72,10 @@ import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover
 import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils"; // Ensure cn is imported if not already
+import { useCustomers } from "@/contexts/CustomerContext";
 
 // --- Customer Details Section Component ---
-interface CustomerDetailsSectionProps {
-  customer: Customer;
-  allCustomers: Customer[];
-  onUpdateCustomer: (updatedCustomer: Customer) => void;
-  onCustomerSelect: (customerId: string) => void;
-}
-
-function CustomerDetailsSection({
-  customer,
-  allCustomers,
-  onUpdateCustomer,
-  onCustomerSelect,
-}: CustomerDetailsSectionProps) {
-  const [isEditingCustomer, setIsEditingCustomer] = useState<boolean>(false);
-  // Initialize with structured address
-  const [editableCustomer, setEditableCustomer] = useState<Customer>(() => ({ ...customer, billing_address: customer.billing_address ? { ...customer.billing_address } : {} }));
-  const [isSelectingCustomer, setIsSelectingCustomer] = useState<boolean>(false);
-  const [customerSearchQuery, setCustomerSearchQuery] = useState('');
-  const customerNameInputRef = useRef<HTMLInputElement>(null);
-
-  // Effect to reset editable customer when the main customer prop changes or editing stops
-  useEffect(() => {
-    if (customer && !isEditingCustomer) {
-      // Deep copy billing_address
-      setEditableCustomer({ 
-        ...customer, 
-        billing_address: customer.billing_address ? { ...customer.billing_address } : {}
-      });
-    }
-  }, [customer, isEditingCustomer]);
-
-  // Effect to focus input when editing starts
-  useEffect(() => {
-    if (isEditingCustomer && customerNameInputRef.current) {
-      customerNameInputRef.current.focus();
-    }
-  }, [isEditingCustomer]);
-  
-  // Effect to reset search query and editing state when selection mode changes
-  useEffect(() => { 
-    if (!isSelectingCustomer || isEditingCustomer) {
-        setCustomerSearchQuery('');
-    }
-    if (isSelectingCustomer) {
-        setIsEditingCustomer(false); // Ensure edit mode is off when selecting
-    }
-  }, [isSelectingCustomer, isEditingCustomer]);
-
-  // Update filter logic for structured address
-  const filteredCustomers = useMemo(() => {
-    const lowerCaseQuery = customerSearchQuery.toLowerCase().trim();
-    if (!lowerCaseQuery) {
-      return allCustomers;
-    }
-    return allCustomers.filter(cust => 
-      cust.name.toLowerCase().includes(lowerCaseQuery) ||
-      cust.email?.toLowerCase().includes(lowerCaseQuery) ||
-      cust.phone?.toLowerCase().includes(lowerCaseQuery) ||
-      cust.mobile_phone?.toLowerCase().includes(lowerCaseQuery) ||
-      (cust.billing_address && (
-        cust.billing_address.street?.toLowerCase().includes(lowerCaseQuery) ||
-        cust.billing_address.city?.toLowerCase().includes(lowerCaseQuery) ||
-        cust.billing_address.state?.toLowerCase().includes(lowerCaseQuery) ||
-        cust.billing_address.postcode?.toLowerCase().includes(lowerCaseQuery)
-      ))
-    );
-  }, [allCustomers, customerSearchQuery]);
-
-  const handleInlineCustomerSelect = (customerId: string) => {
-    onCustomerSelect(customerId);
-    setIsSelectingCustomer(false); // Close selection mode after selection
-  };
-
-  const handleStartEditCustomer = () => { 
-    // Ensure deep copy of address on edit start
-    setEditableCustomer({ 
-      ...customer, 
-      billing_address: customer.billing_address ? { ...customer.billing_address } : {}
-    }); 
-    setIsEditingCustomer(true); 
-    setIsSelectingCustomer(false); // Ensure selection mode is off
-  };
-  
-  const handleCancelEditCustomer = () => { 
-    // Reset changes by deep copying original customer again
-    setEditableCustomer({ 
-      ...customer, 
-      billing_address: customer.billing_address ? { ...customer.billing_address } : {}
-    }); 
-    setIsEditingCustomer(false); 
-  };
-
-  const handleSaveCustomer = () => { 
-    if (editableCustomer) { 
-      if (!editableCustomer.name.trim()) { 
-          alert("Customer name cannot be empty."); 
-          return; 
-      } 
-      onUpdateCustomer(editableCustomer); // Call parent handler to save
-      setIsEditingCustomer(false); // Exit editing mode
-    } 
-  };
-
-  // Updated input change handler for nested address fields
-  const handleCustomerInputChange = (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => { 
-    const { name, value } = event.target; 
-    setEditableCustomer(prev => {
-      // Assuming 'prev' will always be a valid Customer object based on initialization
-      // Remove the '!prev' check
-      // if (!prev) return null; 
-
-      // Check if the field belongs to the billing_address object
-      if (name.startsWith('billing_address.')) {
-        const addressField = name.split('.')[1] as keyof Address;
-        return {
-          ...prev,
-          billing_address: {
-            ...(prev.billing_address || {}), // Keep nullish coalescing for safety
-            [addressField]: value
-          }
-        };
-      } else {
-        // Handle top-level fields
-        return { ...prev, [name]: value };
-      }
-    }); 
-  };
-  
-  // handleCustomerKeyDown remains the same
-  const handleCustomerKeyDown = (event: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => { 
-    if (event.key === 'Enter' && event.target instanceof HTMLInputElement) {
-      handleSaveCustomer(); 
-    } else if (event.key === 'Escape') { 
-      handleCancelEditCustomer(); 
-    } 
-  };
-
-  // Helper to format address for display
-  const formatAddress = (address: Address | null | undefined): string => {
-    if (!address) return "N/A";
-    const parts = [
-      address.street,
-      address.city,
-      address.state,
-      address.postcode,
-      address.country,
-    ].filter(Boolean); // Filter out null/undefined/empty strings
-    return parts.join(', ') || "N/A";
-  };
-
-  return (
-    <section className="px-4">
-      <h3 className="text-sm font-semibold mb-2 flex items-center">
-        <User className="h-4 w-4 mr-2" /> 
-        Customer
-        <div className="ml-auto flex items-center gap-1">
-          {isEditingCustomer ? (
-            <>
-              <Button variant="ghost" size="icon" className="h-6 w-6 text-primary" onClick={handleSaveCustomer} title="Save Customer"><Check className="h-4 w-4" /></Button>
-              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleCancelEditCustomer} title="Cancel Edit"><CancelIcon className="h-4 w-4" /></Button>
-            </>
-          ) : isSelectingCustomer ? (
-            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setIsSelectingCustomer(false)} title="Cancel Selection"><CancelIcon className="h-4 w-4" /></Button>
-          ) : (
-            <>
-              <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={() => setIsSelectingCustomer(true)} title="Select Customer">
-                  <Users className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={handleStartEditCustomer} title="Edit Customer Details">
-                  <Pencil className="h-4 w-4" />
-              </Button>
-            </>
-          )}
-        </div>
-      </h3>
-      <div className="text-xs bg-muted p-3 rounded-md">
-        {isSelectingCustomer ? (
-          // --- Customer Selection UI (Update filter display if needed) ---
-          <div className="space-y-2">
-             <Input 
-                placeholder="Search customers..."
-                value={customerSearchQuery}
-                onChange={(e) => setCustomerSearchQuery(e.target.value)}
-                className="h-8 text-xs"
-                autoFocus
-             />
-             <ScrollArea className="h-[150px] border rounded-md">
-               <div className="p-1">
-                 {filteredCustomers.length > 0 ? (
-                   filteredCustomers.map(cust => (
-                     <div 
-                       key={cust.id}
-                       onClick={() => handleInlineCustomerSelect(cust.id)}
-                       className={`flex flex-col p-2 hover:bg-accent hover:text-accent-foreground rounded-sm cursor-pointer transition-colors duration-150 text-xs ${cust.id === customer.id ? 'bg-accent/50 font-medium' : ''}`}
-                     >
-                       <p className="font-semibold text-xs mb-0.5 truncate">{cust.name}</p>
-                       <div className="flex items-center text-[11px] text-muted-foreground truncate">
-                         <Mail className="h-2.5 w-2.5 mr-1 shrink-0"/>
-                         <span>{cust.email || 'N/A'}</span>
-                       </div>
-                       <div className="flex items-center text-[11px] text-muted-foreground truncate">
-                         <Phone className="h-2.5 w-2.5 mr-1 shrink-0"/>
-                         <span>{cust.phone || 'N/A'}</span>
-                       </div>
-                        {/* Optionally display mobile or address snippet */} 
-                       <div className="flex items-center text-[11px] text-muted-foreground truncate">
-                         <Smartphone className="h-2.5 w-2.5 mr-1 shrink-0"/>
-                         <span>{cust.mobile_phone || 'N/A'}</span>
-                       </div>
-                        <div className="flex items-center text-[11px] text-muted-foreground truncate">
-                         <Home className="h-2.5 w-2.5 mr-1 shrink-0"/>
-                         <span className="truncate">{formatAddress(cust.billing_address)}</span>
-                       </div>
-                     </div>
-                   ))
-                 ) : (
-                   <p className="text-xs text-muted-foreground text-center p-4">No customers found.</p>
-                 )}
-               </div>
-             </ScrollArea>
-           </div>
-        ) : isEditingCustomer && editableCustomer ? (
-          // --- Customer Editing UI (Updated for new fields) ---
-           <>
-            {/* Name Input */}
-            <div className="flex items-center h-6 mb-1"> 
-              <Label htmlFor="customerName" className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased">Name</Label>
-              <Input 
-                ref={customerNameInputRef} 
-                id="customerName" 
-                name="name" 
-                value={editableCustomer.name} 
-                onChange={handleCustomerInputChange} 
-                onKeyDown={handleCustomerKeyDown} 
-                className="p-0 h-full font-sans text-foreground antialiased flex-grow bg-transparent border-0 shadow-none focus-visible:ring-0 rounded-none"
-                style={{ fontSize: '0.75rem', lineHeight: '1.25' }} /> 
-            </div>
-            {/* Email Input */}
-            <div className="flex items-center h-6 mb-1"> 
-              <Label htmlFor="customerEmail" className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased">Email</Label>
-              <Input 
-                id="customerEmail" 
-                name="email" 
-                type="email" 
-                value={editableCustomer.email || ""} 
-                onChange={handleCustomerInputChange} 
-                onKeyDown={handleCustomerKeyDown} 
-                className="p-0 h-full font-sans text-foreground antialiased flex-grow bg-transparent border-0 shadow-none focus-visible:ring-0 rounded-none"
-                style={{ fontSize: '0.75rem', lineHeight: '1.25' }} /> 
-            </div>
-            {/* Phone Input */}
-            <div className="flex items-center h-6 mb-1"> 
-              <Label htmlFor="customerPhone" className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased">Phone</Label>
-              <Input 
-                id="customerPhone" 
-                name="phone" 
-                value={editableCustomer.phone || ""} 
-                onChange={handleCustomerInputChange} 
-                onKeyDown={handleCustomerKeyDown} 
-                className="p-0 h-full font-sans text-foreground antialiased flex-grow bg-transparent border-0 shadow-none focus-visible:ring-0 rounded-none"
-                style={{ fontSize: '0.75rem', lineHeight: '1.25' }} /> 
-            </div>
-             {/* Mobile Phone Input */}
-            <div className="flex items-center h-6 mb-1"> 
-              <Label htmlFor="customerMobilePhone" className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased">Mobile</Label>
-              <Input 
-                id="customerMobilePhone" 
-                name="mobile_phone" 
-                value={editableCustomer.mobile_phone || ""} 
-                onChange={handleCustomerInputChange} 
-                onKeyDown={handleCustomerKeyDown} 
-                className="p-0 h-full font-sans text-foreground antialiased flex-grow bg-transparent border-0 shadow-none focus-visible:ring-0 rounded-none"
-                style={{ fontSize: '0.75rem', lineHeight: '1.25' }} /> 
-            </div>
-            {/* Address Street Input */}
-            <div className="flex items-center h-6 mb-1"> 
-              <Label htmlFor="customerAddressStreet" className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased">Street</Label>
-              <Input 
-                id="customerAddressStreet" 
-                name="billing_address.street" 
-                value={editableCustomer.billing_address?.street || ""} 
-                onChange={handleCustomerInputChange} 
-                onKeyDown={handleCustomerKeyDown} 
-                className="p-0 h-full font-sans text-foreground antialiased flex-grow bg-transparent border-0 shadow-none focus-visible:ring-0 rounded-none"
-                style={{ fontSize: '0.75rem', lineHeight: '1.25' }} /> 
-            </div>
-            {/* Address City Input */}
-            <div className="flex items-center h-6 mb-1"> 
-              <Label htmlFor="customerAddressCity" className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased">City</Label>
-              <Input 
-                id="customerAddressCity" 
-                name="billing_address.city" 
-                value={editableCustomer.billing_address?.city || ""} 
-                onChange={handleCustomerInputChange} 
-                onKeyDown={handleCustomerKeyDown} 
-                className="p-0 h-full font-sans text-foreground antialiased flex-grow bg-transparent border-0 shadow-none focus-visible:ring-0 rounded-none"
-                style={{ fontSize: '0.75rem', lineHeight: '1.25' }} /> 
-            </div>
-            {/* Address State Input */}
-            <div className="flex items-center h-6 mb-1"> 
-              <Label htmlFor="customerAddressState" className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased">State</Label>
-              <Input 
-                id="customerAddressState" 
-                name="billing_address.state" 
-                value={editableCustomer.billing_address?.state || ""} 
-                onChange={handleCustomerInputChange} 
-                onKeyDown={handleCustomerKeyDown} 
-                className="p-0 h-full font-sans text-foreground antialiased flex-grow bg-transparent border-0 shadow-none focus-visible:ring-0 rounded-none"
-                style={{ fontSize: '0.75rem', lineHeight: '1.25' }} /> 
-            </div>
-             {/* Address Postcode Input */}
-            <div className="flex items-center h-6 mb-1"> 
-              <Label htmlFor="customerAddressPostcode" className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased">Postcode</Label>
-              <Input 
-                id="customerAddressPostcode" 
-                name="billing_address.postcode" 
-                value={editableCustomer.billing_address?.postcode || ""} 
-                onChange={handleCustomerInputChange} 
-                onKeyDown={handleCustomerKeyDown} 
-                className="p-0 h-full font-sans text-foreground antialiased flex-grow bg-transparent border-0 shadow-none focus-visible:ring-0 rounded-none"
-                style={{ fontSize: '0.75rem', lineHeight: '1.25' }} /> 
-            </div>
-           </>
-        ) : (
-          // --- Customer Display UI (Updated for new fields) ---
-           <>
-            {/* Name Display */}
-            <div className="flex items-center h-6 mb-1"> 
-              <span className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased">Name</span> 
-              <span className="text-xs font-sans text-foreground antialiased flex-grow truncate" style={{ lineHeight: '1.25' }}>{customer.name}</span>
-            </div>
-            {/* Email Display */}
-            <div className="flex items-center h-6 mb-1"> 
-              <span className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased">Email</span> 
-              <span className="text-xs font-sans text-foreground antialiased flex-grow truncate" style={{ lineHeight: '1.25' }}>{customer.email || <span className="text-muted-foreground italic">N/A</span>}</span>
-            </div>
-            {/* Phone Display */}
-            <div className="flex items-center h-6 mb-1"> 
-              <span className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased">Phone</span> 
-              <span className="text-xs font-sans text-foreground antialiased flex-grow truncate" style={{ lineHeight: '1.25' }}>{customer.phone || <span className="text-muted-foreground italic">N/A</span>}</span>
-            </div>
-             {/* Mobile Display */}
-             <div className="flex items-center h-6 mb-1"> 
-              <span className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased">Mobile</span> 
-              <span className="text-xs font-sans text-foreground antialiased flex-grow truncate" style={{ lineHeight: '1.25' }}>{customer.mobile_phone || <span className="text-muted-foreground italic">N/A</span>}</span>
-            </div>
-            {/* Address Display */}
-            <div className="flex items-start h-auto mb-0"> 
-              <span className="w-16 shrink-0 text-muted-foreground font-semibold font-sans text-xs leading-tight antialiased pt-px">Address</span>
-              <span className="text-xs font-sans text-foreground antialiased flex-grow break-words whitespace-normal min-h-[24px]" style={{ lineHeight: '1.25' }}>
-                 {formatAddress(customer.billing_address)}
-              </span>
-            </div>
-           </>
-        )}
-      </div>
-    </section>
-  );
-}
-// --- End Customer Details Section ---
+import { CustomerDetailsSection } from './CustomerDetailsSection';
 
 // --- Quote Dropdown Section Component ---
 interface QuoteDropdownSectionProps {
@@ -722,7 +364,7 @@ function QuoteDropdownSection({
                                <div className="flex-grow flex items-center gap-1">
                                    <Input ref={quoteInputRef} type="text" value={editingQuoteName} onChange={(e) => setEditingQuoteName(e.target.value)} onKeyDown={handleRenameKeyDown} onBlur={handleSaveRenameQuote} onClick={(e) => e.stopPropagation()} className="h-6 text-xs flex-grow"/>
                                    <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={(e) => { e.stopPropagation(); handleSaveRenameQuote(); }} title="Save Name"><Check className="h-3 w-3 text-primary" /></Button>
-                                   <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={(e) => { e.stopPropagation(); handleCancelRenameQuote(); }} title="Cancel Rename"><CancelIcon className="h-3 w-3" /></Button>
+                                   <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={(e) => { e.stopPropagation(); handleCancelRenameQuote(); }} title="Cancel Rename"><CloseIcon className="h-3 w-3" /></Button>
                                </div>
                            ) : (
                                <span className="flex-grow truncate cursor-default" title={quote.name}>
@@ -736,7 +378,7 @@ function QuoteDropdownSection({
                            {quoteConfirmDeleteId === quote.id ? (
                                <div className="flex items-center">
                                    <Button variant="destructive" size="sm" className="h-6 text-xs px-2 mr-1" onClick={(e) => { e.stopPropagation(); handleDeleteQuoteConfirmClick(quote.id); }} title="Confirm Delete">Confirm?</Button>
-                                   <Button variant="ghost" size="icon" className="h-5 w-5" onClick={(e) => { e.stopPropagation(); setQuoteConfirmDeleteId(null); }} title="Cancel Delete"><CancelIcon className="h-3 w-3"/></Button>
+                                   <Button variant="ghost" size="icon" className="h-5 w-5" onClick={(e) => { e.stopPropagation(); setQuoteConfirmDeleteId(null); }} title="Cancel Delete"><CloseIcon className="h-3 w-3"/></Button>
                                </div>
                            ) : editingQuoteId === quote.id ? (
                                null // No buttons while actively editing name inline
@@ -774,7 +416,7 @@ function QuoteDropdownSection({
                                                  onClick={(e) => { e.stopPropagation(); setIsQuoteDuplicatePopoverOpen(false); setDuplicatingQuoteId(null); }} 
                                                  title="Close"
                                              >
-                                                 <CancelIcon className="h-4 w-4" />
+                                                 <CloseIcon className="h-4 w-4" />
                                              </Button>
                                          </div>
                                          {/* Input for New Copies */}
@@ -1267,6 +909,7 @@ interface CurrentQuoteSidebarProps {
   onDeleteAllQuotes: (customerId: string) => void;
   onDuplicateQuote: (quoteId: string) => void;
   onDeleteAllTiers: () => void;
+  isLoadingCustomers: boolean;
 }
 
 const calculateQuoteTotalPriceFromTasks = (tasks: QuoteTask[]): number => {
@@ -1460,7 +1103,7 @@ const QuotePricingDetails = ({
                   <span className="font-regular text-xs mr-1">$</span>
                   <Input ref={totalPriceInputRef} type="number" step="0.01" value={editingTotalPriceStr} onChange={(e) => setEditingTotalPriceStr(e.target.value)} onKeyDown={handleTotalPriceKeyDown} onBlur={handleSaveTotalPrice} className="h-6 text-sm w-24 font-semibold" disabled={!currentQuote} />
                   <Button variant="ghost" size="icon" className="h-5 w-5" onClick={handleSaveTotalPrice} title="Save" disabled={!currentQuote}><Check className="h-3 w-3 text-primary"/></Button>
-                  <Button variant="ghost" size="icon" className="h-5 w-5" onClick={handleCancelEditTotalPrice} title="Cancel" disabled={!currentQuote}><CancelIcon className="h-3 w-3"/></Button>
+                  <Button variant="ghost" size="icon" className="h-5 w-5" onClick={handleCancelEditTotalPrice} title="Cancel" disabled={!currentQuote}><CloseIcon className="h-3 w-3"/></Button>
                 </div>
               ) : (
                 <span className={`cursor-pointer hover:bg-secondary px-1 rounded ${!currentQuote ? 'cursor-not-allowed opacity-50' : ''}`} title={!currentQuote ? 'No quote selected' : showAdjustmentSlider ? 'Disable adjustment to edit total' : 'Click to edit total'} onClick={currentQuote && !showAdjustmentSlider ? handleStartEditTotalPrice : undefined}>
@@ -1481,7 +1124,7 @@ const QuotePricingDetails = ({
 export function CurrentQuoteSidebar({
   quotes,
   currentQuoteId,
-  customer,
+  customer: propCustomer,
   availableTiers: availableTiersProp,
   allCustomers,
   onQuoteSelect,
@@ -1492,7 +1135,7 @@ export function CurrentQuoteSidebar({
   onRenameTier,
   onPreviewQuote,
   onUpdateCustomer,
-  onCustomerSelect,
+  onCustomerSelect: propCustomerSelect,
   onAddQuote,
   onDeleteQuote,
   onRenameQuote,
@@ -1504,21 +1147,102 @@ export function CurrentQuoteSidebar({
   onDeleteAllQuotes,
   onDuplicateQuote,
   onDeleteAllTiers,
+  isLoadingCustomers,
 }: CurrentQuoteSidebarProps) {
   console.log("CurrentQuoteSidebar received quotes:", quotes, "currentQuoteId:", currentQuoteId);
 
-  // Add log inside the memo where currentQuote is derived
+  // Access the customer context
+  const { selectedCustomer, selectCustomer: contextSelectCustomer } = useCustomers();
+  
+  // Use prop customer if provided, otherwise use selectedCustomer from context
+  const customer = propCustomer || selectedCustomer;
+  
+  // Use prop customerSelect if provided, otherwise use selectCustomer from context
+  const onCustomerSelect = propCustomerSelect || contextSelectCustomer;
+
+  // State for sidebar width
+  const [sidebarWidth, setSidebarWidth] = useState<number>(350); // Default width
+  const isResizing = useRef<boolean>(false);
+  const sidebarRef = useRef<HTMLDivElement>(null); // Ref for the sidebar container
+  const inputRef = useRef<HTMLInputElement>(null);
+  const quoteInputRef = useRef<HTMLInputElement>(null);
+
+  // State for customer selection and data
+  const [customerSearchQuery, setCustomerSearchQuery] = useState('');
+  
+  // All other state declarations - make sure ALL useState hooks are here
+  const [internalAvailableTiers, setInternalAvailableTiers] = useState<Tier[]>(availableTiersProp);
+  const [isTierDropdownOpen, setIsTierDropdownOpen] = useState(false);
+  const [editingTierId, setEditingTierId] = useState<string | null>(null);
+  const [editingTierName, setEditingTierName] = useState<string>("");
+  const [tierConfirmDeleteId, setTierConfirmDeleteId] = useState<string | null>(null);
+  const [confirmingDeleteAllTiers, setConfirmingDeleteAllTiers] = useState<boolean>(false);
+  const [isProcessingAction, setIsProcessingAction] = useState<boolean>(false);
+  const [isDuplicatePopoverOpen, setIsDuplicatePopoverOpen] = useState<boolean>(false);
+  const [duplicatingTierId, setDuplicatingTierId] = useState<string | null>(null);
+  const [duplicateTargetTierIds, setDuplicateTargetTierIds] = useState<string[]>([]);
+  const [duplicateNewTierCount, setDuplicateNewTierCount] = useState<number>(1);
+  const [clearConfirmTierId, setClearConfirmTierId] = useState<string | null>(null);
+  const [isShowingAddTierPopover, setIsShowingAddTierPopover] = useState<boolean>(false);
+  const [newTierName, setNewTierName] = useState<string>('');
+  const [showAdjustmentSlider, setShowAdjustmentSlider] = useState<boolean>(false);
+  const [adjustmentPercentage, setAdjustmentPercentage] = useState<number>(0);
+  const [isEditingSendEmail, setIsEditingSendEmail] = useState<boolean>(false);
+  const [tempSendEmail, setTempSendEmail] = useState<string>('');
+  const [isEditingSendSms, setIsEditingSendSms] = useState<boolean>(false);
+  const [tempSendSms, setTempSendSms] = useState<string>('');
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState<boolean>(false);
+  const [editingTaskDetails, setEditingTaskDetails] = useState<{task: QuoteTask, index: number, tierId: string} | null>(null);
+  const [isEditAllTasksDialogOpen, setIsEditAllTasksDialogOpen] = useState<boolean>(false);
+  const [editingAllTasksTierId, setEditingAllTasksTierId] = useState<string | null>(null);
+  const [isQuoteDropdownOpen, setIsQuoteDropdownOpen] = useState(false);
+  const [isSelectingCustomer, setIsSelectingCustomer] = useState<boolean>(false);
+  const [isEditingCustomer, setIsEditingCustomer] = useState<boolean>(false);
+  const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null);
+  const [editingQuoteName, setEditingQuoteName] = useState<string>("");
+  const [quotesToSendIds, setQuotesToSendIds] = useState<string[]>([]);
+  const [disabledEmailSendClicks, setDisabledEmailSendClicks] = useState<number>(0);
+  const [disabledSmsSendClicks, setDisabledSmsSendClicks] = useState<number>(0);
+  
+  // Filter customers based on search - this must always be called
+  const filteredCustomers = useMemo(() => {
+    const lowerCaseQuery = customerSearchQuery.toLowerCase().trim();
+    if (!lowerCaseQuery) {
+      return allCustomers;
+    }
+    return allCustomers.filter(cust => 
+      cust.name.toLowerCase().includes(lowerCaseQuery) ||
+      cust.email?.toLowerCase().includes(lowerCaseQuery) ||
+      cust.phone?.toLowerCase().includes(lowerCaseQuery) ||
+      cust.mobile_phone?.toLowerCase().includes(lowerCaseQuery) ||
+      (cust.billing_address && (
+        cust.billing_address.street?.toLowerCase().includes(lowerCaseQuery) ||
+        cust.billing_address.city?.toLowerCase().includes(lowerCaseQuery) ||
+        cust.billing_address.state?.toLowerCase().includes(lowerCaseQuery) ||
+        cust.billing_address.postcode?.toLowerCase().includes(lowerCaseQuery)
+      ))
+    );
+  }, [allCustomers, customerSearchQuery]);
+
+  // Always derive these values unconditionally
   const currentQuote = useMemo(() => {
     if (!currentQuoteId || !quotes) {
       console.log("[CurrentQuoteSidebar] currentQuote memo: No currentQuoteId or quotes");
       return null;
     }
+    
     const foundQuote = quotes.find(q => q.id === currentQuoteId);
-    console.log("[CurrentQuoteSidebar] currentQuote memo: Found quote?", foundQuote);
+    
+    // Only log when the quote actually changes to reduce console noise
+    if (foundQuote) {
+      console.log("[CurrentQuoteSidebar] currentQuote memo: Found quote", foundQuote.id);
+    } else {
+      console.log("[CurrentQuoteSidebar] currentQuote memo: Quote not found for ID", currentQuoteId);
+    }
+    
     return foundQuote || null;
   }, [currentQuoteId, quotes]);
 
-  // Add log inside the memo where tasks are derived
   const tasksForSelectedTier = useMemo(() => {
     if (!currentQuote || !currentQuote.selectedTierId || !(currentQuote.selectedTierId in currentQuote.tierTasks)) {
       console.log("[CurrentQuoteSidebar] tasksForSelectedTier memo: No current quote, selected tier, or tier tasks");
@@ -1527,72 +1251,81 @@ export function CurrentQuoteSidebar({
     const tasks = currentQuote.tierTasks[currentQuote.selectedTierId] || [];
     console.log("[CurrentQuoteSidebar] tasksForSelectedTier memo: Derived tasks:", tasks);
     return tasks;
-  }, [currentQuote]); // Dependency: currentQuote
+  }, [currentQuote]);
 
-  // Add another log for the DND-specific tasks array
-  const reorderableTasks: ReorderableQuoteTask[] = useMemo(() => {
+  const reorderableTasks = useMemo(() => {
     const tasks = tasksForSelectedTier.map(task => ({ ...task, tempDndId: task.taskId }));
     console.log("[CurrentQuoteSidebar] reorderableTasks memo: Derived:", tasks);
     return tasks;
-  }, [tasksForSelectedTier]); // Dependency: tasksForSelectedTier
+  }, [tasksForSelectedTier]);
 
-  if (!customer) {
-    return (
-      <div className="flex flex-col h-full border-l bg-background items-center justify-center p-4 w-64 flex-shrink-0">
-        <p className="text-sm text-muted-foreground text-center">
-          Select a customer first.
-        </p>
-      </div>
-    );
-  }
-
-  const [internalAvailableTiers, setInternalAvailableTiers] = useState<Tier[]>(availableTiersProp);
-  const [isTierDropdownOpen, setIsTierDropdownOpen] = useState(false);
-  const [editingTierId, setEditingTierId] = useState<string | null>(null);
-  const [editingTierName, setEditingTierName] = useState<string>("");
-  const [tierConfirmDeleteId, setTierConfirmDeleteId] = useState<string | null>(null);
-  const [isProcessingAction, setIsProcessingAction] = useState<boolean>(false);
-  const [isEditingCustomer, setIsEditingCustomer] = useState<boolean>(false);
-  const [isQuoteDropdownOpen, setIsQuoteDropdownOpen] = useState(false); // Restored setter
-  const [editingQuoteId, ] = useState<string | null>(null); // setEditingQuoteId is declared but its value is never read.
-  const [isEditingSendEmail, setIsEditingSendEmail] = useState<boolean>(false);
-  const [tempSendEmail, setTempSendEmail] = useState<string>("");
-  const [isEditingSendSms, setIsEditingSendSms] = useState<boolean>(false);
-  const [tempSendSms, setTempSendSms] = useState<string>("");
-  const [quotesToSendIds, setQuotesToSendIds] = useState<string[]>([]);
-  const [disabledEmailSendClicks, setDisabledEmailSendClicks] = useState<number>(0);
-  const [disabledSmsSendClicks, setDisabledSmsSendClicks] = useState<number>(0);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [editingTaskDetails, setEditingTaskDetails] = useState<{ task: QuoteTask; index: number; tierId: string } | null>(null);
-  const [isEditAllTasksDialogOpen, setIsEditAllTasksDialogOpen] = useState(false);
-  const [adjustmentPercentage, setAdjustmentPercentage] = useState<number>(0);
-  const [showAdjustmentSlider, setShowAdjustmentSlider] = useState<boolean>(false);
-  type ReorderableQuoteTask = QuoteTask & { tempDndId: string };
-  const inputRef = useRef<HTMLInputElement>(null);
-  const quoteInputRef = useRef<HTMLInputElement>(null);
-  const [duplicatingTierId, setDuplicatingTierId] = useState<string | null>(null);
-  const [isDuplicatePopoverOpen, setIsDuplicatePopoverOpen] = useState<boolean>(false);
-  const [clearConfirmTierId, setClearConfirmTierId] = useState<string | null>(null);
-  const [isSelectingCustomer, ] = useState<boolean>(false); // setIsSelectingCustomer is declared but its value is never read.
-  const [_customerSearchQuery, setCustomerSearchQuery] = useState(''); // Corrected: marked unused variable
-  const [duplicateTargetTierIds, setDuplicateTargetTierIds] = useState<string[]>([]);
-  const [duplicateNewTierCount, setDuplicateNewTierCount] = useState<number>(1);
-  const [confirmingDeleteAllTiers, setConfirmingDeleteAllTiers] = useState<boolean>(false); // Added back as it is used
-  const [editingAllTasksTierId, setEditingAllTasksTierId] = useState<string | null>(null);
-
+  // Always compute these values (move them before any returns)
   const selectedTierId = currentQuote?.selectedTierId;
   const isQuoteSentOrAccepted = currentQuote?.status === 'Sent' || currentQuote?.status === 'Accepted';
-  const hasEmail = !!customer.email;
-  const hasPhone = !!customer.phone;
-  const canSend = !isQuoteSentOrAccepted && (hasEmail || hasPhone);
-  const customerQuotes = quotes.filter((q) => q.customerId === customer.id);
-  const baseQuoteNumber = customerQuotes[0]?.quoteNumber || "Q-ERR";
+  const hasEmail = customer?.email ? true : false;
+  const hasPhone = customer?.phone ? true : false;
+  const canSend = customer && !isQuoteSentOrAccepted && (hasEmail || hasPhone);
+  const customerQuotes = customer ? quotes.filter((q) => q.customerId === customer.id) : [];
+  const baseQuoteNumber = customerQuotes.length > 0 ? customerQuotes[0]?.quoteNumber || "Q-ERR" : "Q-ERR";
+  
+  // Sidebar resize handlers
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (!isResizing.current || !sidebarRef.current) return;
+    const newWidth = window.innerWidth - e.clientX;
+    const constrainedWidth = Math.max(280, Math.min(newWidth, 800));
+    setSidebarWidth(constrainedWidth);
+  }, []);
 
-  useEffect(() => { if (editingTierId && inputRef.current) inputRef.current.focus(); }, [editingTierId]);
-  useEffect(() => { if (editingQuoteId && quoteInputRef.current) quoteInputRef.current.focus(); }, [editingQuoteId]);
-  useEffect(() => { if (customer?.email && !isEditingSendEmail) setTempSendEmail(customer.email); if (customer?.phone && !isEditingSendSms) setTempSendSms(customer.phone); }, [customer, isEditingSendEmail, isEditingSendSms]);
-  useEffect(() => { setInternalAvailableTiers(availableTiersProp); }, [availableTiersProp]);
-  useEffect(() => { setClearConfirmTierId(null); }, [selectedTierId]);
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizing.current = true;
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
+
+  const handleMouseUp = () => {
+    if (isResizing.current) {
+      isResizing.current = false;
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+  };
+  
+  // All useEffect hooks must be declared before any conditional returns
+  useEffect(() => {
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [handleMouseMove]);
+
+  useEffect(() => { 
+    if (editingTierId && inputRef.current) inputRef.current.focus(); 
+  }, [editingTierId]);
+  
+  useEffect(() => { 
+    if (editingQuoteId && quoteInputRef.current) quoteInputRef.current.focus(); 
+  }, [editingQuoteId]);
+  
+  useEffect(() => { 
+    if (customer?.email && !isEditingSendEmail) setTempSendEmail(customer.email); 
+    if (customer?.phone && !isEditingSendSms) setTempSendSms(customer.phone); 
+  }, [customer, isEditingSendEmail, isEditingSendSms]);
+  
+  useEffect(() => { 
+    setInternalAvailableTiers(availableTiersProp); 
+  }, [availableTiersProp]);
+  
+  useEffect(() => { 
+    setClearConfirmTierId(null); 
+  }, [selectedTierId]);
+  
   useEffect(() => { 
     if (!isQuoteDropdownOpen || currentQuoteId) {
         setIsQuoteDropdownOpen(false);
@@ -1600,15 +1333,31 @@ export function CurrentQuoteSidebar({
     // Reset tier delete confirmation when quote dropdown state changes
     setConfirmingDeleteAllTiers(false); 
   }, [isQuoteDropdownOpen, currentQuoteId]);
-  useEffect(() => { 
-    if (!isSelectingCustomer || isEditingCustomer) {
-        setCustomerSearchQuery('');
-    }
-    if (isSelectingCustomer) {
-        setIsEditingCustomer(false);
-    }
-  }, [isSelectingCustomer, isEditingCustomer]);
 
+  // Add back helper functions before hooks
+  // Format currency helper
+  const formatCurrency = (amount: number): string => 
+    new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(amount);
+
+  // Get tier name helper
+  const getTierName = (tierId?: string): string => 
+    internalAvailableTiers.find(t => t.id === tierId)?.name || (tierId ? `Tier ${tierId}` : "None");
+
+  // Calculate tier total price helper
+  const calculateTierTotalPrice = (tierId: string): number => {
+    if (!currentQuote || !tierId || !(tierId in (currentQuote.tierTasks || {}))) return 0;
+    return calculateQuoteTotalPriceFromTasks(currentQuote.tierTasks[tierId] || []);
+  };
+
+  // Format address helper
+  const formatAddress = (address: Address | null | undefined): string => {
+    if (!address) return "N/A";
+    const parts = [address.street, address.city, address.state, address.postcode, address.country].filter(Boolean);
+    return parts.length ? parts.join(', ') : "N/A";
+  };
+  
+  // After the formatAddress function but before any conditional return
+  // Move all hooks before the conditional return
   const sortedAvailableTiers = useMemo(() => {
     const standardTierNames = ['gold', 'silver', 'bronze'];
     const standardTiers: Tier[] = [];
@@ -1634,9 +1383,198 @@ export function CurrentQuoteSidebar({
     return [...standardTiers, ...otherTiers];
   }, [internalAvailableTiers]);
 
-  const formatCurrency = (amount: number): string => new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(amount);
-  const getTierName = (tierId?: string): string => internalAvailableTiers.find(t => t.id === tierId)?.name || (tierId ? `Tier ${tierId}` : "None");
+  // Create and add all function hooks before conditional return
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }), 
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
 
+  const handleOpenEditTaskDialog = useCallback((task: QuoteTask, index: number, tierId: string) => {
+    setEditingTaskDetails({ task, index, tierId });
+    setIsEditDialogOpen(true);
+  }, []);
+
+  const handleOpenEditAllTasksDialog = useCallback(() => {
+    if (!currentQuote?.selectedTierId) return;
+    setEditingAllTasksTierId(currentQuote.selectedTierId);
+    setIsEditAllTasksDialogOpen(true);
+  }, [currentQuote?.selectedTierId]);
+
+  const handleTaskDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    const selectedTierId = currentQuote?.selectedTierId;
+    if (selectedTierId && currentQuote && over && active.id !== over.id) {
+      const oldIndex = reorderableTasks.findIndex(item => item.tempDndId === active.id);
+      const newIndex = reorderableTasks.findIndex(item => item.tempDndId === over.id);
+      if (oldIndex !== -1 && newIndex !== -1) {
+        onReorderTasks(selectedTierId, oldIndex, newIndex);
+      }
+    }
+  }, [currentQuote, reorderableTasks, onReorderTasks]);
+
+  const handleUpdateTaskQuantity = useCallback((taskIndex: number, tierId: string, newQuantity: number) => {
+    if (!currentQuote) return;
+    const tasks = currentQuote.tierTasks[tierId];
+    if (!tasks || taskIndex < 0 || taskIndex >= tasks.length) return;
+    
+    const taskToUpdate = tasks[taskIndex];
+    // Check if quantity actually changed to avoid unnecessary updates
+    if ((taskToUpdate.quantity ?? 1) === newQuantity) {
+      console.log(`[handleUpdateTaskQuantity] Quantity unchanged for task index ${taskIndex}`);
+      return; // Avoid calling update if quantity is the same
+    }
+
+    const updatedTask: QuoteTask = {
+        ...taskToUpdate,
+        quantity: newQuantity
+    };
+    console.log(`[handleUpdateTaskQuantity] Updating task index ${taskIndex} in tier ${tierId} with quantity ${newQuantity}`);
+    // Call the main update task handler passed from PricebookPage
+    onUpdateTask(taskIndex, tierId, updatedTask);
+  }, [currentQuote, onUpdateTask]);
+
+  const handleDeleteTask = useCallback((taskIndex: number, tierId: string) => {
+    // Ensure the onDeleteTask prop is called with the correct arguments
+    onDeleteTask(taskIndex, tierId);
+  }, [onDeleteTask]);
+
+  // Convert to regular function to fix linter errors
+  const handleConfirmDuplicate = (): void => {
+    if (!duplicatingTierId || !currentQuote) return; // Guard against null ID
+
+    const sourceTierName = getTierName(duplicatingTierId); // Checked non-null above
+    let copyCounter = 1;
+
+    // Function to find the next available copy name (consistent)
+    const getNextCopyName = (baseName: string): string => {
+        let newName: string;
+        do {
+            newName = `${baseName} Copy ${copyCounter++}`;
+        } while (internalAvailableTiers.some(t => t.name === newName));
+        return newName;
+    };
+
+    // Use state variables directly from the main component state
+    // Create new tiers
+    if (duplicateNewTierCount > 0) { // Use component state
+        for (let i = 0; i < duplicateNewTierCount; i++) { // Use component state
+            const newTierName = getNextCopyName(sourceTierName);
+            console.log(`Popover: Duplicating ${duplicatingTierId} to NEW tier: ${newTierName}`);
+            onDuplicateTier(duplicatingTierId, null, newTierName);
+        }
+    }
+
+    // Overwrite existing tiers
+    if (duplicateTargetTierIds.length > 0) { // Use component state
+        duplicateTargetTierIds.forEach(destinationTierId => { // Use component state
+            console.log(`Popover: Duplicating ${duplicatingTierId} OVERWRITING tier: ${destinationTierId}`);
+            onDuplicateTier(duplicatingTierId, destinationTierId);
+        });
+    }
+
+    // Reset and close popover
+    setIsDuplicatePopoverOpen(false); // Close popover 
+    setDuplicatingTierId(null);
+    // Reset internal state vars used by popover inputs
+    setDuplicateTargetTierIds([]); // Reset component state
+    setDuplicateNewTierCount(1); // Reset component state
+  };
+
+  const handleDuplicateButtonClick = useCallback((e: React.MouseEvent, tierId: string) => {
+    e.stopPropagation(); // Prevent event bubbling
+    setDuplicatingTierId(tierId); // Set the target tier ID
+    setIsDuplicatePopoverOpen(true); // Explicitly open the popover
+    setDuplicateTargetTierIds([]); // Reset duplication state defined at top level
+    setDuplicateNewTierCount(1); // Reset duplication state defined at top level
+  }, []);
+
+  const handlePopoverOpenChange = useCallback((open: boolean) => {
+    // Only manage popover state. Reset ID only on explicit close.
+    setIsDuplicatePopoverOpen(open);
+    if (!open) {
+      setDuplicatingTierId(null);
+    }
+  }, []);
+
+  const handleDuplicateConfirmClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent event bubbling
+    handleConfirmDuplicate(); // Call the component handler
+  }, []); // Remove handleConfirmDuplicate from dependencies since it's now a regular function
+
+  const handlePopoverOutsideInteraction = useCallback((e: Event) => {
+    // Allow interacting with other dropdown items without closing popover/dropdown
+    const target = e.target as HTMLElement;
+    if (target.closest('[role="menuitem"]') || target.closest('[role="menu"]')) {
+      e.preventDefault(); 
+    } else {
+      // Otherwise, close the popover normally
+      setIsDuplicatePopoverOpen(false);
+      setDuplicatingTierId(null);
+    }
+  }, []);
+
+  const handleDeleteTierButtonClick = useCallback((e: React.MouseEvent, tierId: string) => {
+    e.stopPropagation();
+    setTierConfirmDeleteId(tierId);
+  }, []);
+
+  const handleDropdownCloseAutoFocus = useCallback((e: Event) => {
+    // Prevent focus-related close if editing/confirming delete, a popover is open, or confirming delete all
+    if (editingTierId || tierConfirmDeleteId || isDuplicatePopoverOpen || confirmingDeleteAllTiers) {
+      e.preventDefault();
+    }
+  }, [editingTierId, tierConfirmDeleteId, isDuplicatePopoverOpen, confirmingDeleteAllTiers]);
+
+  const handleTierDropdownOpenChange = useCallback((open: boolean) => {
+    // Prevent closing the dropdown if EITHER popover is open
+    if (!open && isDuplicatePopoverOpen) { 
+      return; // Do nothing, keep dropdown open
+    }
+    // Otherwise, update the dropdown state normally
+    if (currentQuote) {
+      setIsTierDropdownOpen(open);
+      // If we are closing the main dropdown, ensure other states are reset
+      if (!open) {
+        setTierConfirmDeleteId(null);
+        setEditingTierId(null); // Also cancel renaming
+        setIsDuplicatePopoverOpen(false); 
+        setDuplicatingTierId(null);
+        setConfirmingDeleteAllTiers(false); // Reset delete all confirmation
+      }
+    } 
+  }, [currentQuote, isDuplicatePopoverOpen]);
+
+  // Only now do we conditionally return
+  if (!customer) {
+    // Customer selection UI shown when no customer is selected
+    return (
+      <div 
+        ref={sidebarRef}
+        className="flex flex-col h-full border-l bg-card relative flex-shrink-0"
+        style={{ width: `${sidebarWidth}px` }}
+      >
+        {/* Resize Handle */}
+        <div 
+          onMouseDown={handleMouseDown}
+          className="absolute top-0 left-0 w-1.5 h-full cursor-col-resize bg-transparent hover:bg-border/50 transition-colors duration-200 z-10"
+          title="Drag to resize"
+        />
+        <div className="p-4 border-b flex justify-between items-center flex-shrink-0 relative z-0 bg-card">
+          <h2 className="text-lg font-semibold truncate pr-2">Quote Details</h2>
+        </div>
+        <ScrollArea className="flex-grow">
+          <div className="p-4 pr-6 space-y-6">
+            <CustomerDetailsSection 
+              customer={null} 
+              onCustomerSelect={onCustomerSelect} 
+            />
+          </div>
+        </ScrollArea>
+      </div>
+    );
+  }
+
+  // The rest of your handlers remain the same
   const handleTierClick = (tierId: string) => {
     if (!tierId || editingTierId === tierId || tierConfirmDeleteId === tierId || !currentQuote) return;
     if (tierConfirmDeleteId !== null) setTierConfirmDeleteId(null);
@@ -1680,31 +1618,6 @@ export function CurrentQuoteSidebar({
     }, 300);
   };
 
-  const handleOpenEditTaskDialog = useCallback((task: QuoteTask, index: number, tierId: string) => {
-    setEditingTaskDetails({ task, index, tierId });
-    setIsEditDialogOpen(true);
-  }, []);
-  const handleOpenEditAllTasksDialog = useCallback(() => {
-    if (!currentQuote?.selectedTierId) return;
-    setEditingAllTasksTierId(currentQuote.selectedTierId);
-    setIsEditAllTasksDialogOpen(true);
-  }, [currentQuote?.selectedTierId]);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
-  const handleTaskDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    const selectedTierId = currentQuote?.selectedTierId;
-    if (selectedTierId && currentQuote && over && active.id !== over.id) {
-      const oldIndex = reorderableTasks.findIndex(item => item.tempDndId === active.id);
-      const newIndex = reorderableTasks.findIndex(item => item.tempDndId === over.id);
-      if (oldIndex !== -1 && newIndex !== -1) {
-        onReorderTasks(selectedTierId, oldIndex, newIndex);
-      }
-    }
-  };
-  const calculateTierTotalPrice = (tierId: string): number => {
-    if (!currentQuote?.tierTasks?.[tierId]) return 0;
-    return calculateQuoteTotalPriceFromTasks(currentQuote.tierTasks[tierId]);
-  };
   const handleInitiateClearAllTasks = (tierId: string): void => { setClearConfirmTierId(tierId); setTierConfirmDeleteId(null); };
   const handleConfirmClearAllTasks = (tierId: string): void => {
     if (!currentQuote || clearConfirmTierId !== tierId) return;
@@ -1712,210 +1625,6 @@ export function CurrentQuoteSidebar({
     setClearConfirmTierId(null);
     setAdjustmentPercentage(0);
   };
-
-
-
-
-
-  const handleConfirmDuplicate = (): void => {
-    if (!duplicatingTierId || !currentQuote) return; // Guard against null ID
-
-    const sourceTierName = getTierName(duplicatingTierId); // Checked non-null above
-    let copyCounter = 1;
-
-    // Function to find the next available copy name (consistent)
-    const getNextCopyName = (baseName: string): string => {
-        let newName: string;
-        do {
-            newName = `${baseName} Copy ${copyCounter++}`;
-        } while (internalAvailableTiers.some(t => t.name === newName));
-        return newName;
-    };
-
-    // Use state variables directly from the main component state
-    // Create new tiers
-    if (duplicateNewTierCount > 0) { // Use component state
-        for (let i = 0; i < duplicateNewTierCount; i++) { // Use component state
-            const newTierName = getNextCopyName(sourceTierName);
-            console.log(`Popover: Duplicating ${duplicatingTierId} to NEW tier: ${newTierName}`);
-            onDuplicateTier(duplicatingTierId, null, newTierName);
-        }
-    }
-
-    // Overwrite existing tiers
-    if (duplicateTargetTierIds.length > 0) { // Use component state
-        duplicateTargetTierIds.forEach(destinationTierId => { // Use component state
-            console.log(`Popover: Duplicating ${duplicatingTierId} OVERWRITING tier: ${destinationTierId}`);
-            onDuplicateTier(duplicatingTierId, destinationTierId);
-        });
-    }
-
-    // Reset and close popover
-    setIsDuplicatePopoverOpen(false); // Close popover 
-    setDuplicatingTierId(null);
-    // Reset internal state vars used by popover inputs
-    setDuplicateTargetTierIds([]); // Reset component state
-    setDuplicateNewTierCount(1); // Reset component state
-  };
-
-  // === NEW: Handler specifically for inline quantity updates ===
-  const handleUpdateTaskQuantity = useCallback((taskIndex: number, tierId: string, newQuantity: number) => {
-    if (!currentQuote) return;
-    const tasks = currentQuote.tierTasks[tierId];
-    if (!tasks || taskIndex < 0 || taskIndex >= tasks.length) return;
-    
-    const taskToUpdate = tasks[taskIndex];
-    // Check if quantity actually changed to avoid unnecessary updates
-    if ((taskToUpdate.quantity ?? 1) === newQuantity) {
-      console.log(`[handleUpdateTaskQuantity] Quantity unchanged for task index ${taskIndex}`);
-      return; // Avoid calling update if quantity is the same
-    }
-
-    const updatedTask: QuoteTask = {
-        ...taskToUpdate,
-        quantity: newQuantity
-    };
-    console.log(`[handleUpdateTaskQuantity] Updating task index ${taskIndex} in tier ${tierId} with quantity ${newQuantity}`);
-    // Call the main update task handler passed from PricebookPage
-    onUpdateTask(taskIndex, tierId, updatedTask);
-
-  }, [currentQuote, onUpdateTask]);
-
-  // === Delete Task Handler (passed to QuoteTasksList) ===
-  const handleDeleteTask = useCallback((taskIndex: number, tierId: string) => {
-    // Ensure the onDeleteTask prop is called with the correct arguments
-    onDeleteTask(taskIndex, tierId);
-  }, [onDeleteTask]); // Dependency: The onDeleteTask prop from the parent
-
-  // === Render ===
-  // Derive selectedTierId with fallback
-  // const selectedTierId = currentQuote?.selectedTierId || null;
-
-  // Duplicate popover button click handler
-  const handleDuplicateButtonClick = useCallback((e: React.MouseEvent, tierId: string) => {
-    e.stopPropagation(); // Prevent event bubbling
-    setDuplicatingTierId(tierId); // Set the target tier ID
-    setIsDuplicatePopoverOpen(true); // Explicitly open the popover
-    setDuplicateTargetTierIds([]); // Reset duplication state defined at top level
-    setDuplicateNewTierCount(1); // Reset duplication state defined at top level
-  }, []);
-
-  // Duplicate popover label click handler to prevent propagation
-
-  // Handle dropdown tier tier open/close
-  const handleTierDropdownOpenChange = useCallback((open: boolean) => {
-                    // Prevent closing the dropdown if EITHER popover is open
-                    if (!open && isDuplicatePopoverOpen) { 
-                      return; // Do nothing, keep dropdown open
-                    }
-                    // Otherwise, update the dropdown state normally
-                    if (currentQuote) {
-                      setIsTierDropdownOpen(open);
-                      // If we are closing the main dropdown, ensure other states are reset
-                      if (!open) {
-                        setTierConfirmDeleteId(null);
-                        setEditingTierId(null); // Also cancel renaming
-                        setIsDuplicatePopoverOpen(false); 
-                        setDuplicatingTierId(null);
-                        setConfirmingDeleteAllTiers(false); // Reset delete all confirmation
-                      }
-                    } 
-  }, [currentQuote, isDuplicatePopoverOpen]);
-
-  // Handle popover open/close
-  const handlePopoverOpenChange = useCallback((open: boolean) => {
-    // Only manage popover state. Reset ID only on explicit close.
-    setIsDuplicatePopoverOpen(open);
-    if (!open) {
-      setDuplicatingTierId(null);
-    }
-  }, []);
-
-  // Handle duplicate popover confirm button
-  const handleDuplicateConfirmClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent event bubbling
-    handleConfirmDuplicate(); // Call the component handler
-  }, [handleConfirmDuplicate]);
-
-  // Handle popover outside interaction
-  const handlePopoverOutsideInteraction = useCallback((e: Event) => {
-    // Allow interacting with other dropdown items without closing popover/dropdown
-    const target = e.target as HTMLElement;
-    if (target.closest('[role="menuitem"]') || target.closest('[role="menu"]')) {
-      e.preventDefault(); 
-    } else {
-      // Otherwise, close the popover normally
-      setIsDuplicatePopoverOpen(false);
-      setDuplicatingTierId(null);
-    }
-  }, []);
-
-  // Handle delete tier button click
-  const handleDeleteTierButtonClick = useCallback((e: React.MouseEvent, tierId: string) => {
-    e.stopPropagation();
-    setTierConfirmDeleteId(tierId);
-  }, []);
-
-  // Handle dropdown menu close auto focus
-  const handleDropdownCloseAutoFocus = useCallback((e: Event) => {
-    // Prevent focus-related close if editing/confirming delete, a popover is open, or confirming delete all
-    if (editingTierId || tierConfirmDeleteId || isDuplicatePopoverOpen || confirmingDeleteAllTiers) {
-      e.preventDefault();
-    }
-  }, [editingTierId, tierConfirmDeleteId, isDuplicatePopoverOpen, confirmingDeleteAllTiers]);
-
-  // State for sidebar width
-  const [sidebarWidth, setSidebarWidth] = useState<number>(350); // Default width
-  const isResizing = useRef<boolean>(false);
-  const sidebarRef = useRef<HTMLDivElement>(null); // Ref for the sidebar container
-
-  // Minimum and maximum width for the sidebar
-  const minWidth = 280;
-  const maxWidth = 800;
-
-  const handleMouseDown = (e: React.MouseEvent) => {
-    e.preventDefault(); // Prevent text selection during drag
-    isResizing.current = true;
-    // Add global listeners
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    document.body.style.cursor = 'col-resize'; // Change cursor globally
-    document.body.style.userSelect = 'none'; // Prevent text selection globally
-  };
-
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!isResizing.current || !sidebarRef.current) return;
-
-    // Calculate new width based on mouse position relative to the right edge of the viewport
-    const newWidth = window.innerWidth - e.clientX;
-
-    // Apply constraints
-    const constrainedWidth = Math.max(minWidth, Math.min(newWidth, maxWidth));
-    
-    setSidebarWidth(constrainedWidth);
-
-  }, [minWidth, maxWidth]); // Dependencies
-
-  const handleMouseUp = () => {
-    if (isResizing.current) {
-      isResizing.current = false;
-      // Remove global listeners
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = ''; // Reset cursor
-      document.body.style.userSelect = ''; // Reset user selection
-    }
-  };
-  
-  // Cleanup listeners on unmount
-  useEffect(() => {
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = ''; // Ensure cursor is reset on unmount
-      document.body.style.userSelect = '';
-    };
-  }, [handleMouseMove]); // Dependency
 
   return (
     // Main container: Apply dynamic width, ref, and change background back to bg-card
@@ -1943,7 +1652,6 @@ export function CurrentQuoteSidebar({
           {/* Customer Section */}
           <CustomerDetailsSection 
             customer={customer}
-            allCustomers={allCustomers}
             onUpdateCustomer={onUpdateCustomer}
             onCustomerSelect={onCustomerSelect}
           />
@@ -2006,7 +1714,7 @@ export function CurrentQuoteSidebar({
                                      <div className="flex-grow flex items-center gap-1">
                                          <Input ref={inputRef} type="text" value={editingTierName} onChange={(e) => setEditingTierName(e.target.value)} onKeyDown={handleRenameKeyDown} onBlur={handleSaveRename} onClick={(e) => e.stopPropagation()} className="h-6 text-xs flex-grow"/>
                                          <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={(e) => { e.stopPropagation(); handleSaveRename(); }} title="Save Name"><Check className="h-3 w-3 text-primary" /></Button>
-                                         <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={(e) => { e.stopPropagation(); handleCancelRename(); }} title="Cancel Rename"><CancelIcon className="h-3 w-3" /></Button>
+                                         <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={(e) => { e.stopPropagation(); handleCancelRename(); }} title="Cancel Rename"><CloseIcon className="h-3 w-3" /></Button>
                                      </div>
                                  ) : (
                                      <span className="flex-grow truncate cursor-default" title={tier.name}>{tier.name}</span>
@@ -2016,7 +1724,7 @@ export function CurrentQuoteSidebar({
                                    {tierConfirmDeleteId === tier.id ? (
                                        <div className="flex items-center">
                                            <Button variant="destructive" size="sm" className="h-6 text-xs px-2 mr-1" onClick={(e) => { e.stopPropagation(); handleDeleteConfirmClick(tier.id); }} title="Confirm Delete">Confirm?</Button>
-                                           <Button variant="ghost" size="icon" className="h-5 w-5" onClick={(e) => { e.stopPropagation(); setTierConfirmDeleteId(null); }} title="Cancel Delete"><CancelIcon className="h-3 w-3"/></Button>
+                                           <Button variant="ghost" size="icon" className="h-5 w-5" onClick={(e) => { e.stopPropagation(); setTierConfirmDeleteId(null); }} title="Cancel Delete"><CloseIcon className="h-3 w-3"/></Button>
                                        </div>
                                    ) : editingTierId === tier.id ? (
                                        null // No buttons while actively editing name inline
@@ -2062,7 +1770,7 @@ export function CurrentQuoteSidebar({
                                                               }} 
                                                               title="Close"
                                                           >
-                                                              <CancelIcon className="h-4 w-4" />
+                                                              <CloseIcon className="h-4 w-4" />
                                                           </Button>
                                                       </div>
                                                       {/* Input for New Copies */}
@@ -2291,7 +1999,7 @@ export function CurrentQuoteSidebar({
                          console.log('Action: Send via Email to (Edited): ', tempSendEmail); setIsEditingSendEmail(false); setQuotesToSendIds([]);
                        } else if (e.key === 'Escape') { setIsEditingSendEmail(false); setTempSendEmail(customer.email || ""); }
                      }} className="h-6 text-xs flex-grow" />
-                     <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={(e: React.MouseEvent) => { e.stopPropagation(); setIsEditingSendEmail(false); setTempSendEmail(customer.email || ""); }} title="Cancel Edit"><CancelIcon className="h-3 w-3"/></Button>
+                     <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={(e: React.MouseEvent) => { e.stopPropagation(); setIsEditingSendEmail(false); setTempSendEmail(customer.email || ""); }} title="Cancel Edit"><CloseIcon className="h-3 w-3"/></Button>
                    </div>
                  ) : (
                    <>
@@ -2331,7 +2039,7 @@ export function CurrentQuoteSidebar({
                          console.log('Action: Send via SMS to (Edited): ', tempSendSms); setIsEditingSendSms(false); setQuotesToSendIds([]);
                        } else if (e.key === 'Escape') { setIsEditingSendSms(false); setTempSendSms(customer.phone || ""); }
                      }} className="h-6 text-xs flex-grow" />
-                     <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={(e: React.MouseEvent) => { e.stopPropagation(); setIsEditingSendSms(false); setTempSendSms(customer.phone || ""); }} title="Cancel Edit"><CancelIcon className="h-3 w-3"/></Button>
+                     <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={(e: React.MouseEvent) => { e.stopPropagation(); setIsEditingSendSms(false); setTempSendSms(customer.phone || ""); }} title="Cancel Edit"><CloseIcon className="h-3 w-3"/></Button>
                    </div>
                  ) : (
                    <>

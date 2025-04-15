@@ -18,6 +18,7 @@ import {
   Sparkles,
   PanelRightClose, // Added
   PanelRightOpen,  // Added
+  Bug,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CategoryView } from '@/components/pricebook/CategoryView';
@@ -31,63 +32,25 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/Tooltip';
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ThemeToggle } from '@/components/ui/ThemeToggle'; // Added ThemeToggle import
+import { useLocation, useSearchParams, useNavigate, useParams } from 'react-router-dom'; // Add this import
 
 // --- NEW IMPORTS ---
 import { CurrentQuoteSidebar } from '@/components/pricebook/CurrentQuoteSidebar';
-import { Quote, Customer, Tier, QuoteTask } from '@/types/quote';
+import { Quote, Customer, Tier, QuoteTask, Addon } from '@/types/quote';
 import { v4 as uuidv4 } from 'uuid';
 import { useSupabaseClient } from '@supabase/auth-helpers-react';
 import { Session } from '@supabase/auth-helpers-react';
+import { fetchServiceM8Customers, updateServiceM8Customer, createServiceM8Customer, fetchServiceM8Customer } from '@/lib/servicem8';
+import { AddCustomerDialog } from '@/components/pricebook/AddCustomerDialog';
+import { useToast } from "@/hooks/use-toast"; // <<< IMPORT useToast
+import { customers as mockCustomers, getCustomerById } from '@/mock/customers';
+import { useCustomers } from "@/contexts/CustomerContext"; // Add CustomerContext import
+import { useQuotes } from "@/contexts/QuoteContext"; // Add QuoteContext import
 
 // --- Define Default Tier Constant ---
 const CUSTOM_CATEGORY_NAME = "Custom Tasks"; // Define constant for custom category
 
 // --- Mock Data (Replace with actual data fetching/management later) ---
-const mockCustomers: Customer[] = [
-  {
-    id: 'cust-1',
-    name: 'John Doe Plumbing Co.',
-    email: 'john.doe@example.com',
-    phone: '02 9876 5432', // Example office phone
-    mobile_phone: '0412 345 678', // Example mobile
-    billing_address: {
-      street: '123 Example St',
-      city: 'Sydney',
-      state: 'NSW',
-      postcode: '2000',
-      country: 'Australia',
-    },
-  },
-  {
-    id: 'cust-2',
-    name: 'Jane Smith Renovations',
-    email: 'jane@example.com',
-    phone: '03 8765 4321',
-    mobile_phone: '0423 456 789',
-    billing_address: {
-      street: '456 Another Ave',
-      city: 'Melbourne',
-      state: 'VIC',
-      postcode: '3000',
-      country: 'Australia',
-    },
-  },
-  {
-    id: 'cust-3',
-    name: 'Coastal Electrics Pty Ltd',
-    email: 'support@coastalelectrics.com.au',
-    phone: '07 5555 1234',
-    mobile_phone: '0434 567 890', // Added mobile example
-    billing_address: {
-      street: '789 Beach Rd',
-      city: 'Gold Coast',
-      state: 'QLD',
-      postcode: '4217',
-      country: 'Australia',
-    },
-  },
-];
-
 const mockAvailableTiers: Tier[] = [
   { id: 'tier-bronze', name: 'Bronze', multiplier: 1.0, warranty: "Std", perks: [] },
   { id: 'tier-silver', name: 'Silver', multiplier: 1.2, warranty: "1 Year", perks: ["Priority Booking"] },
@@ -550,6 +513,93 @@ function recalculateQuoteTotalForSelectedTier(quote: Quote): number {
 
 // --- Main Pricebook Page Component ---
 export function PricebookPage() {
+  const navigate = useNavigate();
+  const params = useParams();
+  const location = useLocation();
+  
+  // Extract quoteId from either URL params or query params
+  const quoteIdFromParams = params.quoteId;
+  const quoteIdFromQuery = new URLSearchParams(location.search).get('quoteId');
+  const quoteId = quoteIdFromParams || quoteIdFromQuery;
+  
+  // Find and select the quote only once when the component mounts or quoteId changes
+  useEffect(() => {
+    if (quoteId) {
+      console.log(`Loading quote: ${quoteId}`);
+      findAndSelectQuote(quoteId);
+    }
+  }, [quoteId]); // Only depend on quoteId, not other state variables
+  
+  // Update findAndSelectQuote to accept a quoteId parameter
+  const findAndSelectQuote = async (id: string) => {
+    console.log(`[DEBUG] Trying to find quote ID: ${id}`);
+    
+    try {
+      const { data, error } = await supabase
+        .from('quotes')
+        .select('*, customer:customers(*)')
+        .eq('id', id)
+        .single();
+      
+      if (error) {
+        console.error("[DEBUG] Error fetching quote from Supabase:", error);
+        toast({
+          title: "Quote Not Found",
+          description: "The requested quote could not be found. Error: " + error.message,
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      console.log("[DEBUG] Found quote in Supabase:", data);
+      
+      // Set the customer if it's included in the response
+      if (data.customer) {
+        setCurrentCustomer(data.customer);
+      }
+      
+      // Format the quote to match your local structure with ALL required fields
+      const formattedQuote: Quote = {
+        id: data.id,
+        quoteNumber: data.quote_number,
+        sequenceNumber: data.sequence_number || 1,
+        name: data.name,
+        customerId: data.customer_id,
+        status: data.status || 'Draft',
+        tierTasks: data.tier_tasks || {},
+        selectedTierId: data.selected_tier_id,
+        adjustments: data.adjustments || [],
+        totalPrice: data.total_price || 0,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at,
+        sentAt: data.sent_at,
+        acceptedAt: data.accepted_at
+      };
+      
+      console.log("[DEBUG] Formatted quote for state:", formattedQuote);
+      
+      // Add to quotes state
+      setCustomerQuotes([formattedQuote]);
+      setCurrentQuoteId(formattedQuote.id);
+      
+      // Make sure sidebar is visible
+      setIsQuoteSidebarVisible(true);
+      
+      toast({
+        title: "Quote Loaded",
+        description: `Quote ${formattedQuote.quoteNumber} loaded successfully.`
+      });
+      
+    } catch (err) {
+      console.error("[DEBUG] Critical error in findAndSelectQuote:", err);
+      toast({
+        title: "Error Loading Quote",
+        description: "An unexpected error occurred while loading the quote.",
+        variant: "destructive"
+      });
+    }
+  };
+  
   const [selectedCategory, setSelectedCategory] = useState<ServiceCategory | null>(null);
   const [sidebarOpen, _setSidebarOpen] = useState(true); // Keep sidebar open by default for now
   const [mainMenuOpen, setMainMenuOpen] = useState(false);
@@ -565,23 +615,30 @@ export function PricebookPage() {
 
   // --- Quote and Customer State ---
   const [isQuoteSidebarVisible, setIsQuoteSidebarVisible] = useState(true);
-  const [allCustomers, setAllCustomers] = useState<Customer[]>(mockCustomers);
-  const [currentCustomer, setCurrentCustomer] = useState<Customer | null>(allCustomers[0] || null);
-  const [customerQuotes, setCustomerQuotes] = useState<Quote[]>(() => 
-    currentCustomer ? getInitialQuotesForCustomer(currentCustomer.id) : []
-  );
-  const [currentQuoteId, setCurrentQuoteId] = useState<string | null>(
-     () => currentCustomer ? getInitialQuotesForCustomer(currentCustomer.id)[0]?.id || null : null
-  );
+  const [allCustomers, setAllCustomers] = useState<Customer[]>([]);
+  const [isLoadingCustomers, setIsLoadingCustomers] = useState<boolean>(true);
+  const [errorCustomers, setErrorCustomers] = useState<string | null>(null);
+  const [currentCustomer, setCurrentCustomer] = useState<Customer | null>(null);
+  const [customerQuotes, setCustomerQuotes] = useState<Quote[]>([]);
+  const [currentQuoteId, setCurrentQuoteId] = useState<string | null>(null);
   const [availableTiers, setAvailableTiers] = useState<Tier[]>(mockAvailableTiers);
   const [activeBaseQuoteNumber, setActiveBaseQuoteNumber] = useState<string | null>(null);
   const [isCustomTaskDialogOpen, setIsCustomTaskDialogOpen] = useState(false);
+  const [isAddCustomerDialogOpen, setIsAddCustomerDialogOpen] = useState(false);
 
   const supabase = useSupabaseClient();
   const [session, setSession] = useState<Session | null>(null);
 
   const [allServices, setAllServices] = useState<Service[]>(services);
   const [filteredServices, setFilteredServices] = useState<Service[]>([]);
+
+  const { toast } = useToast();
+  
+  // Access context data
+  const { selectedCustomer: contextCustomer, selectCustomer: contextSelectCustomer, allCustomers: contextCustomers } = useCustomers();
+  const { getQuoteById } = useQuotes();
+
+  const [searchParams] = useSearchParams();
 
   // --- Calculate Current Quote ---
   const currentQuote = useMemo(() => {
@@ -675,10 +732,49 @@ export function PricebookPage() {
   }, [currentQuoteId]);
 
   const handleQuoteSelect = useCallback((quoteId: string) => {
-    console.log("Selecting Quote:", quoteId);
-    setCurrentQuoteId(quoteId);
-    // Optionally reset other states tied to a specific quote here
-  }, []);
+    console.log("PricebookPage.handleQuoteSelect called with quoteId:", quoteId);
+    
+    try {
+      if (!quoteId) {
+        console.error("Invalid quoteId provided to handleQuoteSelect");
+        return;
+      }
+      
+      // Verify the quote exists
+      const quoteExists = customerQuotes.some(q => q.id === quoteId);
+      if (!quoteExists) {
+        console.error("Quote not found in customerQuotes:", quoteId);
+        toast({
+          title: "Error",
+          description: "The selected quote could not be found.",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      // Force a state update to make sure we trigger a re-render
+      setCurrentQuoteId(current => {
+        console.log("Setting currentQuoteId from", current, "to", quoteId);
+        return quoteId;
+      });
+      
+      // Ensure the sidebar is visible when selecting a quote
+      setIsQuoteSidebarVisible(true);
+      
+      // Show success toast
+      toast({
+        title: "Quote Selected",
+        description: "The quote has been loaded for editing.",
+      });
+    } catch (error) {
+      console.error("Error in handleQuoteSelect:", error);
+      toast({
+        title: "Error",
+        description: "Failed to select quote. Please try again.",
+        variant: "destructive"
+      });
+    }
+  }, [customerQuotes, toast]);
 
   const handleTierSelect = useCallback((tierId: string) => {
     console.log("Selecting Tier:", tierId);
@@ -844,22 +940,39 @@ export function PricebookPage() {
 
   const handlePreviewQuote = useCallback(() => console.log("Preview Quote"), []);
 
-  const handleUpdateCustomer = useCallback((updatedCustomer: Customer) => {
-    // const previousCustomerState = allCustomers.find(c => c.id === updatedCustomer.id);
-    console.log("Update Customer:", updatedCustomer);
-    setAllCustomers((prev: Customer[]) => prev.map(c => c.id === updatedCustomer.id ? updatedCustomer : c)); // Add type
-    setCurrentCustomer(updatedCustomer);
-    // TODO: Add call to ServiceM8 API to update customer
-    // TODO: Add history tracking if needed
-  }, []); // Removed allCustomers dependency as setAllCustomers uses functional update
-
   const handleCustomerSelect = useCallback((customerId: string) => {
     console.log("Selecting Customer:", customerId);
-    const selectedCustomer = allCustomers.find(c => c.id === customerId);
-    if (selectedCustomer) {
+    
+    // First check if this customer is already selected to prevent unnecessary re-renders
+    if (currentCustomer && currentCustomer.id === customerId) {
+      console.log("Customer already selected, skipping re-selection:", customerId);
+      return;
+    }
+    
+    // Set a loading state to prevent interactions during state transitions
+    setIsLoadingCustomers(true);
+    
+    try {
+      // Clear current quote selection first to prevent potential UI issues
+      setCurrentQuoteId(null);
+      
+      const selectedCustomer = allCustomers.find(c => c.id === customerId) || contextCustomers.find(c => c.id === customerId);
+      if (!selectedCustomer) {
+        console.warn("Selected customer not found:", customerId);
+        setCurrentCustomer(null);
+        setCustomerQuotes([]); // Clear quotes if customer not found
+        setActiveBaseQuoteNumber(null);
+        setIsLoadingCustomers(false);
+        return;
+      }
+      
+      // Update customer state
       setCurrentCustomer(selectedCustomer);
+      
       // Fetch/set quotes for the newly selected customer
       const initialQuotes = getInitialQuotesForCustomer(selectedCustomer.id);
+      
+      // Update base quote number
       const baseNumber = initialQuotes[0]?.quoteNumber;
       if (baseNumber) {
         setActiveBaseQuoteNumber(baseNumber);
@@ -869,16 +982,64 @@ export function PricebookPage() {
         setActiveBaseQuoteNumber(newBase);
         console.warn(`Generated new base quote number for ${selectedCustomer.name}: ${newBase}`);
       }
-      setCustomerQuotes(initialQuotes);
-      setCurrentQuoteId(initialQuotes[0]?.id || null);
-    } else {
-      console.warn("Selected customer not found:", customerId);
-      setCurrentCustomer(null);
-      setCustomerQuotes([]); // Clear quotes if customer not found
-      setCurrentQuoteId(null);
-      setActiveBaseQuoteNumber(null);
+      
+      // If there are quotes, select the first one
+      if (initialQuotes.length > 0) {
+        setCustomerQuotes(initialQuotes);
+        // Update quote ID after quotes are loaded
+        setCurrentQuoteId(initialQuotes[0].id);
+      } else {
+        // If no quotes exist, create a new quote synchronously
+        const newQuoteId = `quote-${uuidv4()}`;
+        
+        // Initialize tierTasks with standard tiers
+        const standardTierIds = ['tier-gold', 'tier-silver', 'tier-bronze'];
+        const initialTierTasks = standardTierIds.reduce((acc, tierId) => {
+          acc[tierId] = [];
+          return acc;
+        }, {} as Record<string, QuoteTask[]>);
+        
+        const newQuote: Quote = {
+          id: newQuoteId,
+          quoteNumber: activeBaseQuoteNumber || `Q-${Date.now().toString().slice(-6)}`,
+          sequenceNumber: 1, // First quote for this customer
+          name: "1", // Default name
+          customerId: selectedCustomer.id,
+          status: 'Draft',
+          tierTasks: initialTierTasks,
+          selectedTierId: 'tier-gold', // Default to Gold
+          adjustments: [],
+          totalPrice: 0,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        
+        // Update state synchronously to avoid race conditions
+        const newQuotes = [newQuote];
+        setCustomerQuotes(newQuotes);
+        // Set quote ID after quotes are created
+        setCurrentQuoteId(newQuoteId);
+        
+        console.log("Created new quote for customer:", newQuote);
+        
+        // Show toast notification for the automatically created quote
+        toast({
+          title: "New Quote Created",
+          description: `Created a new quote for ${selectedCustomer.name}. You can start adding services now.`,
+        });
+      }
+    } catch (error) {
+      console.error("Error in handleCustomerSelect:", error);
+      toast({
+        title: "Error",
+        description: "Failed to select customer. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      // Always reset loading state
+      setIsLoadingCustomers(false);
     }
-  }, [allCustomers]); // Dependency on allCustomers is correct here
+  }, [allCustomers, contextCustomers, activeBaseQuoteNumber, toast, currentCustomer]);
 
   const handleDeleteQuote = useCallback((quoteIdToDelete: string) => {
     console.log("Delete Quote:", quoteIdToDelete);
@@ -1246,7 +1407,7 @@ export function PricebookPage() {
     handleAddToQuoteMultiTier(serviceId, [currentSelectedTier], quantity);
   }, [currentQuote?.selectedTierId, handleAddToQuoteMultiTier]);
 
-  // --- End Callback Functions ---
+  // --- END Callback Functions ---
 
   // --- EFFECTS ---
 
@@ -1403,8 +1564,399 @@ export function PricebookPage() {
     };
   }, [handleCategoryMouseMove]); // Add dependency
 
+  // --- Customer Handlers ---
+  const loadCustomers = useCallback(async () => {
+    console.log("Attempting to load customers from ServiceM8...");
+    setIsLoadingCustomers(true);
+    setErrorCustomers(null);
+    try {
+      let fetchedCustomers;
+      try {
+        fetchedCustomers = await fetchServiceM8Customers();
+        console.log("Successfully fetched customers from ServiceM8:", fetchedCustomers);
+      } catch (apiError) {
+        console.warn("Failed to fetch from ServiceM8, falling back to context:", apiError);
+        fetchedCustomers = contextCustomers;
+        if (!fetchedCustomers || fetchedCustomers.length === 0) {
+          console.warn("Context had no customers, falling back to mock data");
+          fetchedCustomers = mockCustomers;
+        }
+      }
+      
+      const sortedCustomers = fetchedCustomers.sort((a, b) => a.name.localeCompare(b.name));
+      setAllCustomers(sortedCustomers);
+      
+      // Select first customer automatically if none is selected
+      if (!currentCustomer && sortedCustomers.length > 0) {
+          setCurrentCustomer(sortedCustomers[0]); // Auto-select first loaded customer
+      }
+    } catch (err: any) {
+      console.error("Failed to load customers:", err);
+      setErrorCustomers(err.message || "An error occurred while fetching customers.");
+      
+      // Fallback to context if available
+      if (contextCustomers && contextCustomers.length > 0) {
+        console.log("Error recovery: Using customers from context");
+        setAllCustomers(contextCustomers);
+        if (!currentCustomer && contextCustomers.length > 0) {
+          setCurrentCustomer(contextCustomers[0]);
+        }
+      }
+    } finally {
+      setIsLoadingCustomers(false);
+    }
+  }, [currentCustomer, contextCustomers]); // Add contextCustomers dependency
+
+  const handleAddNewCustomer = useCallback(async (customerData: Omit<Customer, 'id'>) => {
+    console.log("Attempting to add new customer via ServiceM8:", customerData);
+    try {
+      const newCustomerId = await createServiceM8Customer(customerData);
+      if (newCustomerId) {
+        console.log("Successfully created customer in ServiceM8 with ID:", newCustomerId);
+        const newCustomer = await fetchServiceM8Customer(newCustomerId);
+        if (newCustomer) {
+          console.log("Successfully fetched new customer details:", newCustomer);
+          setAllCustomers(prev => [...prev, newCustomer].sort((a, b) => a.name.localeCompare(b.name)));
+          setCurrentCustomer(newCustomer); // Select the new customer
+          const initialQuotes = getInitialQuotesForCustomer(newCustomerId);
+          setCustomerQuotes(initialQuotes);
+          setCurrentQuoteId(initialQuotes.length > 0 ? initialQuotes[0].id : null);
+          setIsAddCustomerDialogOpen(false);
+          toast({ // <<< SUCCESS TOAST
+            title: "Customer Added",
+            description: `Successfully added ${newCustomer.name}.`,
+          });
+        } else {
+          console.error("Created customer but failed to fetch details. Refreshing list.");
+          await loadCustomers();
+          setIsAddCustomerDialogOpen(false);
+          toast({ // <<< WARNING TOAST (added but couldn't fetch)
+            variant: "default", // Or maybe 'warning' if you add that variant
+            title: "Customer Added (Refresh Needed)",
+            description: `Added customer, but couldn't fetch details immediately. List refreshed.`,
+          });
+        }
+      } else {
+        console.error("Failed to create customer in ServiceM8 (API returned null ID).");
+        throw new Error("Failed to create customer. ServiceM8 did not return an ID.");
+      }
+    } catch (error: any) {
+      console.error("Error in handleAddNewCustomer:", error);
+      toast({ // <<< ERROR TOAST
+          variant: "destructive",
+          title: "Error Adding Customer",
+          description: error.message || "An unexpected error occurred.",
+      });
+      throw error; // Re-throw for dialog internal error handling
+    }
+  }, [loadCustomers, toast]); // <<< Added toast dependency
+
+  const handleUpdateCustomer = useCallback(async (updatedCustomer: Customer) => {
+    console.log("handleUpdateCustomer called with:", updatedCustomer);
+    const previousCustomers = allCustomers;
+    const previousSelectedCustomer = currentCustomer;
+
+    // Optimistic Update
+    setAllCustomers(prev => prev.map(c => c.id === updatedCustomer.id ? updatedCustomer : c));
+    if (currentCustomer?.id === updatedCustomer.id) {
+      setCurrentCustomer(updatedCustomer);
+    }
+
+    try {
+      console.log(`Attempting to update customer ${updatedCustomer.id} in ServiceM8...`);
+      const success = await updateServiceM8Customer(updatedCustomer);
+      if (success) {
+          console.log(`Successfully updated customer ${updatedCustomer.id} in ServiceM8.`);
+          toast({ // <<< SUCCESS TOAST
+            title: "Customer Updated",
+            description: `Successfully updated ${updatedCustomer.name}.`,
+          });
+      } else {
+        console.error(`Failed to update customer ${updatedCustomer.id} in ServiceM8 (API returned failure).`);
+        // Rollback optimistic update
+        setAllCustomers(previousCustomers);
+        setCurrentCustomer(previousSelectedCustomer);
+        toast({ // <<< FAILURE TOAST
+            variant: "destructive",
+            title: "Update Failed",
+            description: `Could not save changes for ${updatedCustomer.name}. Please try again.`,
+        });
+      }
+    } catch (error: any) {
+      console.error(`Error calling updateServiceM8Customer for ${updatedCustomer.id}:`, error);
+      // Rollback optimistic update
+      setAllCustomers(previousCustomers);
+      setCurrentCustomer(previousSelectedCustomer);
+      toast({ // <<< ERROR TOAST
+          variant: "destructive",
+          title: "Update Error",
+          description: error.message || "An unexpected error occurred.",
+      });
+    }
+  }, [allCustomers, currentCustomer, toast]); // <<< Added toast dependency
+
+  // --- END Customer Handlers ---
+
+  // --- EFFECTS ---
+  // Initial customer load
+  useEffect(() => {
+    loadCustomers();
+  }, [loadCustomers]); // Run once on mount via loadCustomers dependency
+
+  // Load quotes when customer changes
+  useEffect(() => {
+      // Skip this effect if currentCustomer doesn't exist
+      // The quotes will be handled by handleCustomerSelect
+      if (!currentCustomer) {
+          // Clear quotes if no customer is selected
+          setCustomerQuotes([]);
+          setCurrentQuoteId(null);
+          setActiveBaseQuoteNumber(null);
+          return;
+      }
+      
+      // If we already have quotes for this customer, no need to reload
+      const existingQuotesForCustomer = customerQuotes.filter(q => q.customerId === currentCustomer.id);
+      if (existingQuotesForCustomer.length > 0) {
+          // We have quotes, make sure one is selected
+          if (!currentQuoteId || customerQuotes.find(q => q.id === currentQuoteId)?.customerId !== currentCustomer.id) {
+             setCurrentQuoteId(existingQuotesForCustomer[0].id);
+          }
+          return;
+      }
+      
+      // If we get here, we need to load quotes
+      const initialQuotes = getInitialQuotesForCustomer(currentCustomer.id);
+      const baseNumber = initialQuotes[0]?.quoteNumber;
+      setActiveBaseQuoteNumber(baseNumber || `Q-${Date.now().toString().slice(-6)}`);
+      setCustomerQuotes(initialQuotes);
+      
+      // If quotes were found, select one
+      if (initialQuotes.length > 0) {
+         setCurrentQuoteId(initialQuotes[0].id);
+         // Optionally add a toast notification that quotes were loaded
+         toast({
+           title: "Quotes Loaded",
+           description: `Loaded ${initialQuotes.length} quote(s) for ${currentCustomer.name}.`,
+         });
+      }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentCustomer, toast]);
+
+  // ... Other Effects (Search, Debug logs, Session) ...
+  
+  // Now that handleCustomerSelect is defined, we can add the useEffect hooks
+  // Sync context customer with local state
+  useEffect(() => {
+    if (contextCustomer && (!currentCustomer || currentCustomer.id !== contextCustomer.id)) {
+      // Context customer changed, update local state
+      handleCustomerSelect(contextCustomer.id);
+    }
+  }, [contextCustomer, currentCustomer, handleCustomerSelect]);
+
+  // Update context when local customer changes
+  useEffect(() => {
+    if (currentCustomer && contextCustomer?.id !== currentCustomer.id) {
+      contextSelectCustomer(currentCustomer.id);
+    }
+  }, [currentCustomer, contextCustomer, contextSelectCustomer]);
+
+  // Effect to handle URL parameters for quote selection
+  useEffect(() => {
+    const quoteId = searchParams.get('quoteId') || (location.state && 'quoteId' in location.state ? location.state.quoteId : null);
+    
+    // Log to help with debugging
+    console.log(`[PricebookPage] URL Parameter or State quoteId: ${quoteId}`);
+    console.log(`[PricebookPage] Current Customer: ${currentCustomer?.id}, Quotes: ${customerQuotes.length}`);
+    
+    if (!quoteId) return;
+    
+    // Function to find and select the quote
+    const findAndSelectQuote = async () => {
+      // Check if quote is already in loaded quotes
+      const quoteExists = customerQuotes.some(q => q.id === quoteId);
+      
+      if (quoteExists) {
+        console.log(`[PricebookPage] Quote found in loaded quotes: ${quoteId}`);
+        
+        // Select the quote
+        setCurrentQuoteId(quoteId);
+        
+        // Find customer for this quote
+        const quote = customerQuotes.find(q => q.id === quoteId);
+        if (quote && quote.customerId && (!currentCustomer || currentCustomer.id !== quote.customerId)) {
+          const customerForQuote = allCustomers.find(c => c.id === quote.customerId);
+          if (customerForQuote) {
+            console.log(`[PricebookPage] Setting customer: ${customerForQuote.id} for quote: ${quoteId}`);
+            setCurrentCustomer(customerForQuote);
+          }
+        }
+        
+        // Make sure sidebar is visible
+        setIsQuoteSidebarVisible(true);
+      } else {
+        console.log(`[PricebookPage] Quote not found in currently loaded quotes: ${quoteId}`);
+        
+        // Try to fetch the quote from Supabase
+        try {
+          const fetchedQuote = await getQuoteById(quoteId);
+          
+          if (!fetchedQuote) {
+            console.error(`Quote ${quoteId} not found in database`);
+            toast({
+              variant: "destructive",
+              title: "Quote Not Found",
+              description: "The requested quote could not be found in the database."
+            });
+            return;
+          }
+          
+          console.log(`[PricebookPage] Quote loaded from database: ${fetchedQuote.id}`);
+          
+          // Find customer for this quote
+          const customerForQuote = allCustomers.find(c => c.id === fetchedQuote.customerId);
+          
+          if (!customerForQuote) {
+            console.warn(`Customer ${fetchedQuote.customerId} for quote ${quoteId} not found`);
+            toast({
+              variant: "destructive",
+              title: "Customer Not Found",
+              description: "The customer associated with this quote could not be found."
+            });
+            return;
+          }
+          
+          // Transform from QuoteContext.Quote to our local Quote type
+          // We need to handle potential differences in the structure
+          const transformedQuote: Quote = {
+            id: fetchedQuote.id,
+            quoteNumber: fetchedQuote.quoteNumber,
+            sequenceNumber: fetchedQuote.sequenceNumber,
+            name: fetchedQuote.name,
+            customerId: fetchedQuote.customerId,
+            status: fetchedQuote.status,
+            selectedTierId: fetchedQuote.selectedTierId,
+            totalPrice: fetchedQuote.totalPrice,
+            createdAt: fetchedQuote.createdAt,
+            updatedAt: fetchedQuote.updatedAt,
+            sentAt: fetchedQuote.sentAt,
+            acceptedAt: fetchedQuote.acceptedAt,
+            // Transform tierTasks - handle potential differences in QuoteTask and Addon structures
+            tierTasks: Object.entries(fetchedQuote.tierTasks || {}).reduce((acc, [tierId, tasks]) => {
+              acc[tierId] = tasks.map(task => ({
+                taskId: task.taskId,
+                originalServiceId: task.originalServiceId,
+                name: task.name,
+                description: task.description,
+                basePrice: task.basePrice,
+                quantity: task.quantity,
+                category: task.category,
+                // Transform addons to match the local Addon type
+                addons: task.addons?.map(addon => ({
+                  addonId: addon.id,
+                  name: addon.name,
+                  price: addon.price
+                }))
+              }));
+              return acc;
+            }, {} as Record<string, QuoteTask[]>),
+            // Transform adjustments
+            adjustments: (fetchedQuote.adjustments || []).map(adj => ({
+              adjustmentId: adj.id,
+              description: adj.description,
+              value: adj.amount, // Assuming amount maps to value
+              amount: adj.amount,
+              type: adj.type === 'percentage' ? 'percentage' : 'manual'
+            }))
+          };
+          
+          // Update state in the correct order
+          setCurrentCustomer(customerForQuote);
+          
+          // Add the transformed quote to our local state
+          setCustomerQuotes(prev => {
+            // Don't add duplicates
+            if (prev.some(q => q.id === transformedQuote.id)) return prev;
+            return [...prev, transformedQuote];
+          });
+          
+          // Then select it
+          setCurrentQuoteId(transformedQuote.id);
+          
+          // Make sure sidebar is visible
+          setIsQuoteSidebarVisible(true);
+          
+          toast({
+            title: "Quote Loaded",
+            description: `Quote has been loaded for editing.`
+          });
+        } catch (error) {
+          console.error("Error loading quote from database:", error);
+          toast({
+            variant: "destructive",
+            title: "Error Loading Quote",
+            description: "There was a problem loading this quote. Please try again."
+          });
+        }
+      }
+    };
+    
+    // Run the function
+    findAndSelectQuote();
+    
+  }, [searchParams, location.search, customerQuotes, allCustomers, currentCustomer, getQuoteById, toast, setCurrentQuoteId, setCurrentCustomer, setCustomerQuotes, setIsQuoteSidebarVisible]);
+
+  // --- Return JSX ---
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
+
+  const DebugPanel = () => {
+    if (!showDebugPanel) return null;
+    
+    return (
+      <div className="fixed bottom-4 right-4 z-50 bg-black/90 text-white p-4 rounded-md shadow-lg max-w-md max-h-[90vh] overflow-auto">
+        <div className="flex justify-between items-center mb-2">
+          <h3 className="font-bold">Debug Info</h3>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="text-white hover:bg-white/20" 
+            onClick={() => setShowDebugPanel(false)}
+          >Close</Button>
+        </div>
+        <div className="space-y-2">
+          <div>
+            <span className="font-semibold">Current Quote ID:</span> 
+            <span className="ml-2 px-2 py-1 bg-primary/20 rounded-md">{currentQuoteId || 'None'}</span>
+          </div>
+          <div>
+            <span className="font-semibold">Current Customer:</span> 
+            <span className="ml-2">{currentCustomer?.name || 'None'}</span>
+          </div>
+          <div>
+            <span className="font-semibold">Loaded Quotes:</span> 
+            <span className="ml-2">{customerQuotes.length}</span>
+          </div>
+          <div className="mt-4">
+            <span className="font-semibold">Quote IDs:</span>
+            <div className="ml-2 mt-1 space-y-1">
+              {customerQuotes.map(q => (
+                <div 
+                  key={q.id} 
+                  className={`px-2 py-1 rounded-md ${q.id === currentQuoteId ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}
+                  onClick={() => handleQuoteSelect(q.id)}
+                >
+                  {q.id} - {q.quoteNumber}: {q.name}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
-      <TooltipProvider>
+    <TooltipProvider>
       <div className={`flex h-screen bg-background ${mainMenuOpen ? 'overflow-hidden' : ''}`}>
           {/* Main Menu Overlay - Conditionally Rendered */}
           {mainMenuOpen && (
@@ -1433,17 +1985,8 @@ export function PricebookPage() {
                       <Menu className="h-6 w-6" />
                   </Button>
 
-                  {/* Search Bar - Stays in Header */}
-                  <div className="relative flex-1">
-                      <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                      <Input
-                          type="search"
-                          placeholder="Search services or categories..."
-                          value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
-                          className="pl-8 w-full md:w-2/3 lg:w-1/2" // Responsive width
-                      />
-                  </div>
+                  {/* Search Bar - Removed from header as it's now in category sidebar */}
+                  <div className="flex-1"></div>
 
                   {/* Header Actions Area */}
                   <div className="flex items-center gap-2 ml-auto">
@@ -1536,6 +2079,20 @@ export function PricebookPage() {
                            </Tooltip>
                         </div>
 
+                        {/* Category Search - Added below the header */}
+                        <div className="p-3 border-b">
+                          <div className="relative">
+                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                            <Input
+                              type="search"
+                              placeholder="Search categories..."
+                              value={searchQuery}
+                              onChange={(e) => setSearchQuery(e.target.value)}
+                              className="pl-8 h-9 w-full"
+                            />
+                          </div>
+                        </div>
+
                         {/* Category List */}
                         <ScrollArea className="flex-grow overflow-y-auto">
                            {searchQuery.trim() === '' ? (
@@ -1608,28 +2165,29 @@ export function PricebookPage() {
                         currentQuoteId={currentQuoteId}
                         customer={currentCustomer}
                         availableTiers={availableTiers}
-                                  allCustomers={allCustomers} // Pass all customers for selection
+                        allCustomers={allCustomers} // Pass all customers for selection
                         onQuoteSelect={handleQuoteSelect}
                         onTierSelect={handleTierSelect}
-                                  onDeleteTask={handleDeleteTask} // Pass down
+                        onDeleteTask={handleDeleteTask} // Pass down
                         onAddTier={handleAddTier}
                         onDeleteTier={handleDeleteTier}
                         onRenameTier={handleRenameTier}
                         onPreviewQuote={handlePreviewQuote}
-                                  onUpdateCustomer={handleUpdateCustomer} // Pass down
-                                  onCustomerSelect={handleCustomerSelect} // Pass down
-                                  onAddQuote={handleAddQuote} // Pass down
-                                  onDeleteQuote={handleDeleteQuote} // Pass down
-                                  onRenameQuote={handleRenameQuote} // Pass down
-                                  onUpdateTask={handleUpdateTask} // Pass down
-                                  onUpdateAllTasks={handleUpdateAllTasks} // Pass down
-                                  onReorderTasks={handleReorderTasks} // Pass down
-                                  onDuplicateTier={handleDuplicateTier} // Pass down
-                                  onClearAllTasks={handleClearAllTasks} // Pass down
-                                  onDeleteAllQuotes={handleDeleteAllQuotes} // Pass down
-                                  onDuplicateQuote={handleDuplicateQuote} // Pass down
-                                  onDeleteAllTiers={handleDeleteAllTiers} // Pass down
-                              />
+                        onUpdateCustomer={handleUpdateCustomer} // <<< Should now be found
+                        onCustomerSelect={handleCustomerSelect} // Pass down
+                        onAddQuote={handleAddQuote} // Pass down
+                        onDeleteQuote={handleDeleteQuote} // Pass down
+                        onRenameQuote={handleRenameQuote} // Pass down
+                        onUpdateTask={handleUpdateTask} // Pass down
+                        onUpdateAllTasks={handleUpdateAllTasks} // Pass down
+                        onReorderTasks={handleReorderTasks} // Pass down
+                        onDuplicateTier={handleDuplicateTier} // Pass down
+                        onClearAllTasks={handleClearAllTasks} // Pass down
+                        onDeleteAllQuotes={handleDeleteAllQuotes} // Pass down
+                        onDuplicateQuote={handleDuplicateQuote} // Pass down
+                        onDeleteAllTiers={handleDeleteAllTiers} // Pass down
+                        isLoadingCustomers={isLoadingCustomers} // Add this prop
+                      />
                       )}
               </main>
         </div>
@@ -1643,9 +2201,28 @@ export function PricebookPage() {
             onAddCustomTask={handleAddCustomTask} // Use the correct handler
             onSaveTaskToLibrary={handleSaveTaskToLibrary} // Pass the placeholder save function
           />
+          <AddCustomerDialog
+            isOpen={isAddCustomerDialogOpen}
+            onOpenChange={setIsAddCustomerDialogOpen}
+            onSubmit={handleAddNewCustomer}
+          />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                className="fixed bottom-4 left-4 z-50 h-10 w-10 rounded-full bg-muted"
+                onClick={() => setShowDebugPanel(!showDebugPanel)}
+              >
+                <Bug className="h-5 w-5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              <p>Toggle Debug Panel</p>
+            </TooltipContent>
+          </Tooltip>
+          <DebugPanel />
       </div>
     </TooltipProvider>
   );
 }
-
-// --- Removed UndoRedoToolbar Component Definition (Handled by PageHeaderActions or similar) ---
