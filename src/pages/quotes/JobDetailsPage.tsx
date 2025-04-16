@@ -1,15 +1,20 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { ArrowLeft, User, FileText, Calendar, DollarSign, Edit, Mail, Phone } from 'lucide-react';
-import { useJobs, Job, JobTask } from '@/contexts/JobContext';
+import { ArrowLeft, User, FileText, Edit, Mail, Phone } from 'lucide-react';
+import { useJobs, Job } from '@/contexts/JobContext';
 import { useCustomers } from '@/contexts/CustomerContext';
 import { Badge } from '@/components/ui/Badge';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { format } from 'date-fns';
+import { JobPdfTemplate } from '@/components/pdf/JobPdfTemplate';
+import { PdfExportButton } from '@/components/ui/pdf-export-button';
+import { usePdfExport } from '@/hooks/usePdfExport';
+import { useSimpleToast } from '@/components/ui/simple-toast';
+import { useCompanySettings } from '@/contexts/SupabaseCompanySettingsContext';
 
 export function JobDetailsPage() {
   const { id } = useParams<{ id: string }>();
@@ -19,6 +24,9 @@ export function JobDetailsPage() {
   const [job, setJob] = useState<Job | null>(null);
   const [tiers, setTiers] = useState<any[]>([]); // Use any[] for tiers since it comes from backend
   const [isLoading, setIsLoading] = useState(true);
+  const { jobRef, isGenerating, exportJobToPdf } = usePdfExport();
+  const { toast } = useSimpleToast();
+  const { companySettings } = useCompanySettings();
 
   useEffect(() => {
     if (!id) return;
@@ -98,6 +106,78 @@ export function JobDetailsPage() {
   // Find customer for this job
   const customer = job ? getCustomerById(job.customerId) : null;
 
+  const handleExportPdf = async () => {
+    if (!id || !job) {
+      toast({
+        title: 'Error',
+        description: 'Job information not available for export',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      await exportJobToPdf(id);
+    } catch (error) {
+      console.error('Error exporting PDF:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to generate PDF',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Transform job data for PDF template
+  const preparePdfData = () => {
+    if (!job || !customer) return null;
+
+    const jobItems = [];
+    
+    // Extract tasks from all tiers
+    for (const tierId in job.tierTasks) {
+      const tierTasks = job.tierTasks[tierId];
+      for (const task of tierTasks) {
+        // Find the base price and addons
+        const basePrice = Number(task.basePrice) || 0;
+        const quantity = Number(task.quantity) || 1;
+        const addonTotal = task.addons?.reduce((sum, addon) => sum + (Number(addon.price) || 0), 0) ?? 0;
+        
+        jobItems.push({
+          id: task.taskId || String(Math.random()),
+          name: task.name,
+          description: task.description || '',
+          quantity: quantity,
+          unit_price: basePrice + (addonTotal / quantity),
+        });
+      }
+    }
+
+    // Create customer info with type safety
+    const customerInfo = {
+      name: customer.name,
+      email: customer.email || '',
+      phone: customer.phone || customer.mobile_phone || undefined,
+    };
+
+    return {
+      id: job.id || id || '',
+      name: job.name || `Job #${job.jobNumber}`,
+      customer: customerInfo,
+      items: jobItems,
+      subtotal: job.totalPrice,
+      tax: 0, // Add tax calculation if available
+      total: job.totalPrice,
+      created_at: job.createdAt,
+      scheduled_at: undefined,
+      completed_at: undefined,
+      status: job.status,
+      notes: '',
+    };
+  };
+
+  const pdfData = preparePdfData();
+
   return (
     <DashboardLayout>
       <div className="p-6 space-y-6">
@@ -112,10 +192,19 @@ export function JobDetailsPage() {
             </h2>
             {job && getStatusBadge(job.status)}
           </div>
-          <Button onClick={handleEdit}>
-            <Edit className="mr-2 h-4 w-4" />
-            Edit Job
-          </Button>
+          <div className="flex gap-2">
+            <PdfExportButton
+              isGenerating={isGenerating}
+              onExport={handleExportPdf}
+              variant="outline"
+            >
+              Export PDF
+            </PdfExportButton>
+            <Button onClick={handleEdit}>
+              <Edit className="mr-2 h-4 w-4" />
+              Edit Job
+            </Button>
+          </div>
         </div>
 
         {isLoading ? (
@@ -341,6 +430,17 @@ export function JobDetailsPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* PDF Template (hidden) */}
+        <div className="hidden">
+          {pdfData && (
+            <JobPdfTemplate
+              ref={jobRef}
+              job={pdfData}
+              companyInfo={companySettings}
+            />
+          )}
+        </div>
       </div>
     </DashboardLayout>
   );

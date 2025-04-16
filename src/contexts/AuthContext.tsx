@@ -1,19 +1,15 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { supabase, syncUserProfile } from '@/lib/supabase';
-import { User, AuthError } from '@supabase/supabase-js';
+import { supabase } from '@/lib/supabase';
+import { Session, User } from '@supabase/supabase-js';
 
-interface AuthState {
+interface AuthContextType {
   user: User | null;
+  session: Session | null;
   loading: boolean;
-  error: AuthError | null;
-  authenticated: boolean;
-}
-
-interface AuthContextType extends AuthState {
-  signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, metadata?: Record<string, any>) => Promise<void>;
+  signIn: (email: string, password: string) => Promise<{ error: any }>;
+  signUp: (email: string, password: string, userData: { name: string; phone_number?: string; company?: string }) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
-  clearError: () => void;
+  refreshSession: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -23,183 +19,169 @@ interface AuthProviderProps {
 }
 
 export function AuthProvider({ children }: AuthProviderProps) {
-  const [state, setState] = useState<AuthState>({
-    user: null,
-    loading: true,
-    error: null,
-    authenticated: false
-  });
+  const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check for existing session on mount
-    const checkAuth = async () => {
-      try {
-        const { data } = await supabase.auth.getSession();
-        const { session } = data;
-        
-        if (session) {
-          setState(prev => ({
-            ...prev,
-            user: session.user,
-            authenticated: true,
-            loading: false
-          }));
-        } else {
-          setState(prev => ({
-            ...prev,
-            loading: false
-          }));
-        }
-      } catch (error) {
-        console.error('Error checking auth:', error);
-        setState(prev => ({
-          ...prev,
-          loading: false,
-          error: error as AuthError
-        }));
-      }
-    };
+    // Initial session check
+    setLoading(true);
+    checkUser();
 
-    checkAuth();
-
-    // Subscribe to auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setState(prev => ({
-          ...prev,
-          user: session?.user ?? null,
-          authenticated: !!session,
-          loading: false
-        }));
-      }
-    );
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
 
     return () => {
       subscription.unsubscribe();
     };
   }, []);
 
-  const signIn = async (email: string, password: string) => {
+  // New function to check user and load profile data
+  async function checkUser() {
     try {
-      setState(prev => ({ ...prev, loading: true, error: null }));
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      });
-
-      if (error) throw error;
+      const { data: { session } } = await supabase.auth.getSession();
+      setSession(session);
+      
+      if (session?.user) {
+        // Get user from session
+        const user = session.user;
+        
+        // Fetch profile data including role from profiles table
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('user_id', user.id)
+          .single();
+        
+        if (profileError) {
+          console.error('Error fetching profile:', profileError);
+        } else if (profile) {
+          // Update user metadata with role from profile
+          const updatedUser = {
+            ...user,
+            user_metadata: {
+              ...user.user_metadata,
+              role: profile.role
+            }
+          };
+          setUser(updatedUser);
+        } else {
+          setUser(user);
+        }
+      } else {
+        setUser(null);
+      }
     } catch (error) {
-      console.error('Error signing in:', error);
-      setState(prev => ({
-        ...prev,
-        error: error as AuthError
-      }));
-      throw error;
+      console.error('Error checking user:', error);
     } finally {
-      setState(prev => ({ ...prev, loading: false }));
+      setLoading(false);
+    }
+  }
+
+  // New function to refresh session and user data
+  const refreshSession = async () => {
+    setLoading(true);
+    try {
+      const { data: { session }, error } = await supabase.auth.refreshSession();
+      
+      if (error) {
+        console.error('Error refreshing session:', error);
+        return;
+      }
+      
+      if (session) {
+        setSession(session);
+        
+        // Fetch profile data including role from profiles table
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('user_id', session.user.id)
+          .single();
+        
+        if (profileError) {
+          console.error('Error fetching profile:', profileError);
+          setUser(session.user);
+        } else if (profile) {
+          // Update user metadata with role from profile
+          const updatedUser = {
+            ...session.user,
+            user_metadata: {
+              ...session.user.user_metadata,
+              role: profile.role
+            }
+          };
+          setUser(updatedUser);
+        } else {
+          setUser(session.user);
+        }
+      }
+    } catch (error) {
+      console.error('Error in refreshSession:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const signUp = async (email: string, password: string, metadata?: Record<string, any>) => {
+  const signIn = async (email: string, password: string) => {
     try {
-      setState(prev => ({ ...prev, loading: true, error: null }));
-      console.log('Attempting to sign up with email:', email);
-      
-      const { data, error } = await supabase.auth.signUp({
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (!error) {
+        await checkUser(); // Load fresh user data including profile
+      }
+      return { error };
+    } catch (error) {
+      console.error('Error signing in:', error);
+      return { error };
+    }
+  };
+
+  const signUp = async (email: string, password: string, userData: { name: string; phone_number?: string; company?: string }) => {
+    try {
+      const { error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          data: metadata
-        }
+          data: {
+            name: userData.name,
+            phone_number: userData.phone_number || '',
+            company: userData.company || '',
+            role: 'User', // Default role
+          },
+        },
       });
-
-      console.log('Supabase signUp response:', { data, error });
-      
-      if (error) throw error;
-      
-      // If signup was successful and we have a user, sync with profiles table
-      if (data?.user) {
-        try {
-          // Sync user metadata with profiles table
-          await syncUserProfile(data.user.id, metadata || {});
-        } catch (syncError) {
-          console.error('Error syncing user profile:', syncError);
-          // We don't throw here to prevent blocking signup completion
-        }
-      }
+      return { error };
     } catch (error) {
       console.error('Error signing up:', error);
-      console.log('Error details:', {
-        message: (error as any)?.message,
-        code: (error as any)?.code,
-        status: (error as any)?.status,
-      });
-      
-      // Custom error handling for email already in use
-      const authError = error as AuthError;
-      if (
-        authError?.message?.includes('User already registered') || 
-        authError?.message?.includes('already exists') ||
-        authError?.message?.includes('already in use') ||
-        authError?.message?.includes('already taken') ||
-        authError?.code === '23505' // PostgreSQL unique violation error
-      ) {
-        console.log('Detected existing user error');
-        const customError = {
-          ...authError,
-          message: 'An account with this email already exists. Please sign in instead.'
-        } as AuthError;
-        
-        setState(prev => ({
-          ...prev,
-          error: customError,
-        }));
-      } else {
-        setState(prev => ({
-          ...prev,
-          error: authError,
-        }));
-      }
-      throw error;
-    } finally {
-      setState(prev => ({ ...prev, loading: false }));
+      return { error };
     }
   };
 
   const signOut = async () => {
     try {
-      setState(prev => ({ ...prev, loading: true, error: null }));
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
+      await supabase.auth.signOut();
+      setUser(null);
+      setSession(null);
     } catch (error) {
       console.error('Error signing out:', error);
-      setState(prev => ({
-        ...prev,
-        error: error as AuthError,
-        loading: false
-      }));
-    } finally {
-      setState(prev => ({ ...prev, loading: false }));
     }
   };
 
-  const clearError = () => {
-    setState(prev => ({ ...prev, error: null }));
-  };
-
   const value = {
-    ...state,
+    user,
+    session,
+    loading,
     signIn,
     signUp,
     signOut,
-    clearError
+    refreshSession
   };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 // Hook to use auth context

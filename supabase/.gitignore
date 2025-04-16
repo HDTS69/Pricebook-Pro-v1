@@ -1,0 +1,12 @@
+# Ignore example migrations
+migrations/01_example_migration.sql
+migrations/02_add_order_date.sql
+migrations/03_add_order_date_to_quotes.sql
+
+# Don't ignore real migrations that will be added later
+# migrations/04_*
+# migrations/05_*
+# etc.
+
+# Local development files
+.env.local 

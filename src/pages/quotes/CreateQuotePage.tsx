@@ -37,10 +37,10 @@ export function CreateQuotePage() {
     
     try {
       // Create a new quote with minimal required fields
-      const newQuoteId = await createQuote({
+      const quoteId = await createQuote({
         quoteNumber,
-        sequenceNumber: 1,
-        name: '1',
+        sequenceNumber: parseInt(Date.now().toString().slice(-6)),
+        name: '',
         customerId: selectedCustomerId,
         status: 'Draft',
         tierTasks: {},
@@ -55,7 +55,7 @@ export function CreateQuotePage() {
       });
       
       // Navigate to the pricebook with the new quote
-      navigate('/pricebook');
+      navigate(`/pricebook?quoteId=${quoteId}`);
     } catch (error: any) {
       toast({
         variant: 'destructive',

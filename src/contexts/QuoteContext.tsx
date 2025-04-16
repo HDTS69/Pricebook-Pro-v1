@@ -1,7 +1,6 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
-import { useCustomers } from './CustomerContext';
 
 // Types
 export interface Quote {
@@ -70,7 +69,6 @@ export function QuoteProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
-  const { allCustomers } = useCustomers();
 
   // Fetch all quotes on load
   useEffect(() => {

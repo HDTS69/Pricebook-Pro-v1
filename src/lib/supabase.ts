@@ -15,19 +15,41 @@ if (!supabaseAnonKey) {
   );
 }
 
+console.log('Initializing Supabase client with URL:', supabaseUrl);
+console.log('Using anon key starting with:', supabaseAnonKey.substring(0, 15) + '...');
+
+// Create the Supabase client with proper authentication settings
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: true,
     storage: window.localStorage,
-    storageKey: 'supabase.auth.token',
+    // Don't use a custom storage key - use default for compatibility
   },
-  global: {
-    headers: {
-      'x-application-name': 'pricebook-pro',
-    },
-  },
+  // Don't add global headers here - they interfere with auth
+  // Let Supabase handle the auth headers automatically
+});
+
+// Check auth state on init and log
+supabase.auth.getSession().then(({ data, error }) => {
+  if (error) {
+    console.error('Error retrieving session:', error);
+  } else if (data.session) {
+    console.log('User is authenticated:', data.session.user.id);
+  } else {
+    console.log('No active session found');
+  }
+});
+
+// Listen for auth changes
+supabase.auth.onAuthStateChange((event, session) => {
+  console.log('Auth state changed:', event);
+  if (session) {
+    console.log('User authenticated:', session.user.id);
+  } else {
+    console.log('User is not authenticated');
+  }
 });
 
 // Helper function to sync user data with profiles table

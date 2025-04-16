@@ -1,16 +1,12 @@
-import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
 import {
   Home,
-  Menu,
   LogOut,
   Users,
-  FileText,
   Settings,
   Book,
-  Briefcase,
-  User
+  Briefcase
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';

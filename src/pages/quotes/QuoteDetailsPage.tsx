@@ -1,15 +1,22 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { ArrowLeft, User, FileText, Calendar, DollarSign, Edit, Mail, Phone } from 'lucide-react';
-import { useQuotes, Quote, QuoteTask } from '@/contexts/QuoteContext';
+import { ArrowLeft, User, FileText, Edit, Mail, Phone } from 'lucide-react';
+import { useQuotes, Quote } from '@/contexts/QuoteContext';
 import { useCustomers } from '@/contexts/CustomerContext';
 import { Badge } from '@/components/ui/Badge';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { format } from 'date-fns';
+import { QuotePdfTemplate } from '@/components/pdf/QuotePdfTemplate';
+import { PdfExportButton } from '@/components/ui/pdf-export-button';
+import { PdfPreviewButton } from '@/components/ui/pdf-preview-button';
+import { PdfPreviewDialog } from '@/components/ui/pdf-preview-dialog';
+import { usePdfExport } from '@/hooks/usePdfExport';
+import { useSimpleToast } from '@/components/ui/simple-toast';
+import { useCompanySettings } from '@/contexts/SupabaseCompanySettingsContext';
 
 export function QuoteDetailsPage() {
   const { id } = useParams<{ id: string }>();
@@ -19,6 +26,17 @@ export function QuoteDetailsPage() {
   const [quote, setQuote] = useState<Quote | null>(null);
   const [tiers, setTiers] = useState<any[]>([]); // Use any[] for tiers since it comes from backend
   const [isLoading, setIsLoading] = useState(true);
+  const { 
+    quoteRef, 
+    isGenerating, 
+    isPreviewOpen, 
+    previewUrl, 
+    exportQuoteToPdf, 
+    previewQuotePdf, 
+    closePreview 
+  } = usePdfExport();
+  const { toast } = useSimpleToast();
+  const { companySettings } = useCompanySettings();
 
   useEffect(() => {
     if (!id) return;
@@ -48,6 +66,50 @@ export function QuoteDetailsPage() {
 
   const handleEdit = () => {
     navigate(`/pricebook?quoteId=${id}`);
+  };
+
+  const handleExportPdf = async () => {
+    if (!id || !quote) {
+      toast({
+        title: 'Error',
+        description: 'Quote information not available for export',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      await exportQuoteToPdf(id);
+    } catch (error) {
+      console.error('Error exporting PDF:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to generate PDF',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handlePreviewPdf = async () => {
+    if (!id || !quote) {
+      toast({
+        title: 'Error',
+        description: 'Quote information not available for preview',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      await previewQuotePdf(id);
+    } catch (error) {
+      console.error('Error previewing PDF:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to generate PDF preview',
+        variant: 'destructive',
+      });
+    }
   };
 
   // Format currency
@@ -95,8 +157,95 @@ export function QuoteDetailsPage() {
     }, 0);
   };
 
+  // Transform quote data for PDF template
+  const preparePdfData = () => {
+    if (!quote || !customer) return null;
+
+    // Format items by tier
+    const formattedTiers = [];
+    
+    for (const tierId in quote.tierTasks) {
+      const tierTasks = quote.tierTasks[tierId];
+      if (tierTasks.length === 0) continue;
+      
+      // Find the tier name
+      const tierInfo = tiers.find(t => t.id === tierId) || { name: 'Unknown Tier' };
+      
+      const items = tierTasks.map(task => {
+        const basePrice = Number(task.basePrice) || 0;
+        const quantity = Number(task.quantity) || 1;
+        const addonTotal = task.addons?.reduce((sum, addon) => sum + (Number(addon.price) || 0), 0) ?? 0;
+        const unitPrice = basePrice + (addonTotal / quantity);
+        
+        return {
+          id: task.taskId || String(Math.random()),
+          name: task.name,
+          description: task.description || '',
+          quantity,
+          unit_price: unitPrice,
+        };
+      });
+      
+      const subtotal = items.reduce((sum, item) => sum + (item.unit_price * item.quantity), 0);
+      
+      formattedTiers.push({
+        tierId,
+        tierName: tierInfo.name,
+        items,
+        subtotal,
+      });
+    }
+
+    // Calculate tax (if applicable)
+    const tax = 0; // Add tax calculation logic if needed
+    
+    // Calculate total for selected tier
+    const selectedTierTotal = quote.selectedTierId ? 
+      calculateTierTotal(quote.selectedTierId) : 0;
+    
+    // Calculate grand total across all tiers
+    let grandTotal = 0;
+    for (const tier of formattedTiers) {
+      grandTotal += tier.subtotal;
+    }
+
+    // Format customer address if available
+    let customerAddress = '';
+    if (customer.billing_address) {
+      const addr = customer.billing_address;
+      customerAddress = [
+        addr.street, 
+        addr.city,
+        `${addr.state} ${addr.postcode}`,
+        addr.country
+      ].filter(Boolean).join(', ');
+    }
+
+    return {
+      id: quote.id || id || '',
+      name: quote.name || '',
+      quote_number: quote.quoteNumber || '',
+      customer: {
+        id: customer.id,
+        name: customer.name,
+        email: customer.email || '',
+        phone: customer.phone || customer.mobile_phone || undefined,
+        address: customerAddress,
+      },
+      tiers: formattedTiers,
+      tax,
+      total: selectedTierTotal,
+      grandTotal,
+      created_at: quote.createdAt,
+      updated_at: quote.updatedAt,
+      status: quote.status || 'Draft',
+      notes: '',
+    };
+  };
+
   // Find customer for this quote
   const customer = quote ? getCustomerById(quote.customerId) : null;
+  const pdfData = preparePdfData();
 
   return (
     <DashboardLayout>
@@ -112,10 +261,26 @@ export function QuoteDetailsPage() {
             </h2>
             {quote && getStatusBadge(quote.status)}
           </div>
-          <Button onClick={handleEdit}>
-            <Edit className="mr-2 h-4 w-4" />
-            Edit Quote
-          </Button>
+          <div className="flex gap-2">
+            <PdfPreviewButton
+              isGenerating={isGenerating}
+              onPreview={handlePreviewPdf}
+              variant="outline"
+            >
+              Preview Quote
+            </PdfPreviewButton>
+            <PdfExportButton
+              isGenerating={isGenerating}
+              onExport={handleExportPdf}
+              variant="outline"
+            >
+              Export PDF
+            </PdfExportButton>
+            <Button onClick={handleEdit}>
+              <Edit className="mr-2 h-4 w-4" />
+              Edit Quote
+            </Button>
+          </div>
         </div>
 
         {isLoading ? (
@@ -327,6 +492,17 @@ export function QuoteDetailsPage() {
                 )}
               </CardContent>
             </Card>
+
+            {/* PDF Template (hidden) */}
+            <div className="hidden">
+              {quote && pdfData && (
+                <QuotePdfTemplate
+                  ref={quoteRef}
+                  quote={pdfData}
+                  companyInfo={companySettings}
+                />
+              )}
+            </div>
           </>
         ) : (
           <Card>
@@ -341,6 +517,16 @@ export function QuoteDetailsPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* PDF Preview Dialog */}
+        <PdfPreviewDialog
+          isOpen={isPreviewOpen}
+          onClose={closePreview}
+          onDownload={handleExportPdf}
+          pdfUrl={previewUrl}
+          title={`Quote Preview - ${quote?.quoteNumber || ''}`}
+          isLoading={isGenerating}
+        />
       </div>
     </DashboardLayout>
   );

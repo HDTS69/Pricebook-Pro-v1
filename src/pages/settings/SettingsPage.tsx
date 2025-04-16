@@ -5,12 +5,14 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Input } from '@/components/ui/Input';
 import { Switch } from '@/components/ui/Switch';
 import { Separator } from '@/components/ui/separator';
-import { Building2, Mail, /* DollarSign, */ Palette, Bell, BookOpen, ListChecks, Timer, Package, ExternalLink, UserCog, ShieldCheck } from 'lucide-react';
+import { Building2, Mail, /* DollarSign, */ Palette, Bell, BookOpen, ListChecks, Timer, Package, UserCog, ShieldCheck, X, UploadCloud } from 'lucide-react';
 import { getActiveServiceM8Token, disconnectServiceM8 } from '@/lib/servicem8';
 import { useToast } from "@/hooks/use-toast";
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { useCompanySettings } from '@/contexts/SupabaseCompanySettingsContext';
+import { Label } from '@/components/ui/label';
 
 interface SettingsSection {
   id: string;
@@ -75,25 +77,52 @@ type ConnectionStatus = 'loading' | 'connected' | 'not-connected' | 'error';
 
 export function SettingsPage() {
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, refreshSession } = useAuth();
+  const { companySettings, updateCompanySettings, isLoading: contextLoading } = useCompanySettings();
   const [activeSection, setActiveSection] = React.useState('business');
   const [status, setStatus] = useState<ConnectionStatus>('loading');
   const [error, setError] = useState<string | null>(null);
   const [isDisconnecting, setIsDisconnecting] = useState<boolean>(false);
   
   // --- State for Settings ---
-  // Business Info
-  const [businessName, setBusinessName] = React.useState('');
-  const [businessAddress, setBusinessAddress] = React.useState('');
-  const [businessPhone, setBusinessPhone] = React.useState('');
-  const [businessEmail, setBusinessEmail] = React.useState('');
+  // Business Info - initialize from companySettings
+  const [businessName, setBusinessName] = React.useState(companySettings.name);
+  const [businessAddress, setBusinessAddress] = React.useState(companySettings.address);
+  const [businessPhone, setBusinessPhone] = React.useState(companySettings.phone);
+  const [businessEmail, setBusinessEmail] = React.useState(companySettings.email);
+  const [businessWebsite, setBusinessWebsite] = React.useState(companySettings.website);
   // Price Book - Quote Options
   const [enableTiers, setEnableTiers] = React.useState(true); // Example default
   const [showAddons, setShowAddons] = React.useState(true); // Example default
   // Price Book - Task Display
   const [showTaskTime, setShowTaskTime] = React.useState(true);
   const [showTaskMaterials, setShowTaskMaterials] = React.useState(true);
-  // TODO: Load initial values for these states from storage/API
+  
+  // Update local state when companySettings change
+  useEffect(() => {
+    setBusinessName(companySettings.name);
+    setBusinessAddress(companySettings.address);
+    setBusinessPhone(companySettings.phone);
+    setBusinessEmail(companySettings.email);
+    setBusinessWebsite(companySettings.website);
+  }, [companySettings]);
+
+  // Add local loading state that we can control
+  const [localLoading, setLocalLoading] = useState<boolean>(false);
+  
+  // Create a combined loading state to reflect both context and local loading
+  const isLoading = contextLoading || localLoading;
+
+  // Fix the default business name issue by adding a useEffect to properly initialize
+  useEffect(() => {
+    // Don't set to empty string if already customized
+    if (companySettings.name === 'Your Company') {
+      setBusinessName('');
+    }
+  }, []);
+
+  // Add inputKey state near the other state declarations
+  const [inputKey, setInputKey] = useState<string>(Date.now().toString());
 
   const checkStatus = useCallback(async () => {
     console.log("Checking ServiceM8 connection status...");
@@ -120,16 +149,40 @@ export function SettingsPage() {
   }, [checkStatus]);
 
   // --- Save Handlers ---
-  const handleSaveBusinessInfo = () => {
-    const businessSettings = {
-      name: businessName,
-      address: businessAddress,
-      phone: businessPhone,
-      email: businessEmail,
-    };
-    console.log("Saving Business Information:", businessSettings);
-    // TODO: Implement actual saving logic (e.g., API call, localStorage)
-    alert("Business Information saved (check console)"); // Simple feedback
+  const handleSaveBusinessInfo = async () => {
+    try {
+      setLocalLoading(true);
+      
+      // If the business name is empty, save it as an empty string, not "Your Company"
+      const nameToSave = businessName.trim() || '';
+      
+      await updateCompanySettings({
+        name: nameToSave,
+        address: businessAddress,
+        phone: businessPhone,
+        email: businessEmail,
+        website: businessWebsite,
+      });
+      
+      toast({
+        title: "Success",
+        description: "Business information saved successfully",
+        variant: "default"
+      });
+      
+      // Show success state for a moment
+      setTimeout(() => {
+        setLocalLoading(false);
+      }, 800);
+    } catch (error) {
+      console.error("Error saving business information:", error);
+      toast({
+        title: "Update Failed",
+        description: "Failed to save business information. Please try again.",
+        variant: "destructive"
+      });
+      setLocalLoading(false);
+    }
   };
 
   const handleSavePriceBookSettings = () => {
@@ -190,30 +243,40 @@ export function SettingsPage() {
     console.log("Attempting to fix admin role...");
     setError(null);
     try {
-      // Correctly update metadata using the updateUser method
-      const { data, error } = await supabase.auth.updateUser({
-        data: {
-          role: 'Administrator',
-        },
-      });
-      
-      if (error) throw error;
-      
-      if (data?.user) {
-        console.log("Admin role fixed successfully.");
-        toast({
-          title: "Success",
-          description: "Admin role fixed successfully. Please refresh the page.",
-        });
-      } else {
-        console.error("Failed to fix admin role.");
-        setError("Failed to fix admin role. Please try again or contact support.");
-        toast({
-          variant: "destructive",
-          title: "Admin Role Fix Failed",
-          description: "Failed to fix admin role. Please try again or contact support.",
-        });
+      // First, get the current user ID
+      const userId = user?.id;
+      if (!userId) {
+        throw new Error("No user ID available");
       }
+
+      // Step 1: Update the user's role in the profiles table directly
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({ role: 'Administrator' })
+        .eq('user_id', userId);
+      
+      if (profileError) {
+        console.error("Error updating profile:", profileError);
+        throw profileError;
+      }
+
+      // Step 2: Try updating auth metadata (this might fail but we continue)
+      try {
+        await supabase.auth.updateUser({
+          data: { role: 'Administrator' },
+        });
+      } catch (authError) {
+        console.warn("Auth update failed, but proceeding with profile update:", authError);
+      }
+
+      // Step 3: Refresh the session to get the updated role
+      await refreshSession(); // Use the new refreshSession function
+
+      console.log("Admin role fixed successfully.");
+      toast({
+        title: "Success",
+        description: "Admin role fixed successfully. Please refresh the page if needed.",
+      });
     } catch (err: any) {
       console.error("Error fixing admin role:", err);
       const errorMessage = err.message || "An error occurred during admin role fix.";
@@ -223,6 +286,139 @@ export function SettingsPage() {
         title: "Admin Role Fix Error",
         description: errorMessage,
       });
+    }
+  };
+
+  const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) {
+      return;
+    }
+    
+    const file = e.target.files[0];
+    const fileSize = file.size / 1024 / 1024; // Convert to MB
+    
+    if (fileSize > 5) {
+      toast({
+        title: "Error",
+        description: "Logo file is too large. Maximum size is 5MB.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    try {
+      setLocalLoading(true);
+      
+      // Convert file to base64 string
+      const reader = new FileReader();
+      
+      reader.readAsDataURL(file);
+      reader.onload = async () => {
+        // The result is the file as a base64 string
+        await updateCompanySettings({
+          ...companySettings,
+          logo: reader.result as string,
+        });
+        
+        toast({
+          title: "Success",
+          description: "Logo uploaded successfully",
+          variant: "default"
+        });
+        setLocalLoading(false);
+      };
+      
+      reader.onerror = () => {
+        toast({
+          title: "Upload Failed",
+          description: "Failed to read logo file. Please try again.",
+          variant: "destructive"
+        });
+        setLocalLoading(false);
+      };
+    } catch (error) {
+      console.error("Error uploading logo:", error);
+      toast({
+        title: "Upload Failed",
+        description: "Failed to upload logo. Please try again.",
+        variant: "destructive"
+      });
+      setLocalLoading(false);
+    }
+  };
+
+  const handleRemoveLogo = async () => {
+    try {
+      setLocalLoading(true);
+      
+      // Update company settings with empty logo
+      await updateCompanySettings({
+        logo: '',
+        logo_url: ''
+      });
+      
+      // Reset the input field key to force a fresh instance
+      setInputKey(Date.now().toString());
+      
+      toast({
+        title: "Success",
+        description: "Logo removed successfully",
+        variant: "default"
+      });
+      
+      // Force a slight delay to ensure state is updated properly
+      setTimeout(() => {
+        setLocalLoading(false);
+      }, 300);
+    } catch (error) {
+      console.error("Error removing logo:", error);
+      toast({
+        title: "Error",
+        description: "Failed to remove logo. Please try again.",
+        variant: "destructive"
+      });
+      setLocalLoading(false);
+    }
+  };
+
+  // Update the clearAllInfo function to also remove the logo
+  const clearAllInfo = async () => {
+    // Clear all text fields
+    setBusinessName('');
+    setBusinessAddress('');
+    setBusinessPhone('');
+    setBusinessEmail('');
+    setBusinessWebsite('');
+    
+    // Clear the logo if it exists
+    if (companySettings.logo || companySettings.logo_url) {
+      try {
+        setLocalLoading(true);
+        
+        // Update company settings with empty logo
+        await updateCompanySettings({
+          logo: '',
+          logo_url: ''
+        });
+        
+        // Reset the input field key to force a fresh instance
+        setInputKey(Date.now().toString());
+        
+        toast({
+          title: "Success",
+          description: "All information cleared successfully",
+          variant: "default"
+        });
+      } catch (error) {
+        console.error("Error clearing information:", error);
+        toast({
+          title: "Error",
+          description: "Failed to clear all information. Please try again.",
+          variant: "destructive"
+        });
+      } finally {
+        setLocalLoading(false);
+      }
     }
   };
 
@@ -264,8 +460,77 @@ export function SettingsPage() {
                       placeholder="Enter your business name"
                       value={businessName}
                       onChange={(e) => setBusinessName(e.target.value)}
+                      onClick={() => {
+                        // Clear the input field when clicked if it contains default text
+                        if (businessName === 'Your Company') {
+                          setBusinessName('');
+                        }
+                      }}
+                      onFocus={() => {
+                        // Clear the input field when focused if it contains default text
+                        if (businessName === 'Your Company') {
+                          setBusinessName('');
+                        }
+                      }}
                     />
                   </div>
+                  
+                  {/* Replace the logo section with improved UI */}
+                  <div className="mt-6">
+                    <div className="mb-2">
+                      <Label htmlFor="logo" className="text-sm font-medium">Company Logo</Label>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Recommended: Square image, max 5MB
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-4">
+                      {/* Logo Preview with X button in corner */}
+                      {companySettings.logo && (
+                        <div className="w-48 h-48 border rounded-md overflow-hidden flex items-center justify-center bg-muted/20 relative">
+                          <img 
+                            src={companySettings.logo || companySettings.logo_url} 
+                            alt="Company Logo" 
+                            className="max-w-full max-h-full object-contain"
+                          />
+                          {/* X button overlay in top-right corner */}
+                          <button
+                            onClick={handleRemoveLogo}
+                            disabled={isLoading}
+                            className="absolute top-2 right-2 rounded-full bg-black/70 hover:bg-black/90 text-white w-7 h-7 flex items-center justify-center"
+                            type="button"
+                            aria-label="Remove logo"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      )}
+                      
+                      {/* Upload Button */}
+                      <div>
+                        <input
+                          key={inputKey}
+                          id="logo"
+                          type="file"
+                          accept="image/*"
+                          onChange={handleLogoChange}
+                          disabled={isLoading}
+                          className="hidden"
+                        />
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            document.getElementById('logo')?.click();
+                          }}
+                          disabled={isLoading}
+                          className="w-full md:w-auto"
+                        >
+                          <UploadCloud className="mr-2 h-4 w-4" />
+                          {companySettings.logo ? 'Change Logo' : 'Upload Logo'}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                  
                   <div className="space-y-2">
                     <label htmlFor="businessAddress" className="text-sm font-medium">
                       Business Address
@@ -301,8 +566,41 @@ export function SettingsPage() {
                       onChange={(e) => setBusinessEmail(e.target.value)}
                     />
                   </div>
-                  <div className="pt-4 flex justify-end">
-                    <Button onClick={handleSaveBusinessInfo}>Save Business Info</Button>
+                  <div className="space-y-2">
+                    <label htmlFor="businessWebsite" className="text-sm font-medium">
+                      Business Website
+                    </label>
+                    <Input
+                      id="businessWebsite"
+                      type="url"
+                      placeholder="Enter your business website"
+                      value={businessWebsite}
+                      onChange={(e) => setBusinessWebsite(e.target.value)}
+                    />
+                  </div>
+                  <div className="pt-4 flex justify-end gap-2">
+                    <Button 
+                      variant="outline" 
+                      onClick={clearAllInfo}
+                      disabled={isLoading}
+                    >
+                      Clear All
+                    </Button>
+                    <Button 
+                      onClick={handleSaveBusinessInfo}
+                      disabled={isLoading}
+                      className="relative"
+                    >
+                      {isLoading ? (
+                        <>
+                          <span className="opacity-0">Save</span>
+                          <span className="absolute inset-0 flex items-center justify-center">
+                            <span className="animate-spin mr-2">⟳</span>
+                            Saving...
+                          </span>
+                        </>
+                      ) : "Save"}
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
