@@ -32,18 +32,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/Tooltip';
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ThemeToggle } from '@/components/ui/ThemeToggle'; // Added ThemeToggle import
-import { useLocation, useSearchParams, useNavigate, useParams } from 'react-router-dom'; // Add this import
+import { useLocation, useSearchParams, useParams } from 'react-router-dom'; // Add this import
 
 // --- NEW IMPORTS ---
 import { CurrentQuoteSidebar } from '@/components/pricebook/CurrentQuoteSidebar';
-import { Quote, Customer, Tier, QuoteTask, Addon } from '@/types/quote';
+import { Quote, Customer, Tier, QuoteTask } from '@/types/quote';
 import { v4 as uuidv4 } from 'uuid';
 import { useSupabaseClient } from '@supabase/auth-helpers-react';
-import { Session } from '@supabase/auth-helpers-react';
 import { fetchServiceM8Customers, updateServiceM8Customer, createServiceM8Customer, fetchServiceM8Customer } from '@/lib/servicem8';
 import { AddCustomerDialog } from '@/components/pricebook/AddCustomerDialog';
 import { useToast } from "@/hooks/use-toast"; // <<< IMPORT useToast
-import { customers as mockCustomers, getCustomerById } from '@/mock/customers';
+import { customers as mockCustomers } from '@/mock/customers';
 import { useCustomers } from "@/contexts/CustomerContext"; // Add CustomerContext import
 import { useQuotes } from "@/contexts/QuoteContext"; // Add QuoteContext import
 
@@ -513,7 +512,7 @@ function recalculateQuoteTotalForSelectedTier(quote: Quote): number {
 
 // --- Main Pricebook Page Component ---
 export function PricebookPage() {
-  const navigate = useNavigate();
+  // Remove unused navigate
   const params = useParams();
   const location = useLocation();
   
@@ -601,10 +600,12 @@ export function PricebookPage() {
   };
   
   const [selectedCategory, setSelectedCategory] = useState<ServiceCategory | null>(null);
-  const [sidebarOpen, _setSidebarOpen] = useState(true); // Keep sidebar open by default for now
+  // Sidebar state
+  const [_sidebarOpen, _setSidebarOpen] = useState<boolean>(false);
   const [mainMenuOpen, setMainMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [isHovering, setIsHovering] = useState(false);
+  // Hovering state
+  const [_isHovering, _setIsHovering] = useState<boolean>(false);
   const [searchResults, setSearchResults] = useState<{
     categories: ServiceCategory[];
     services: Service[];
@@ -617,7 +618,7 @@ export function PricebookPage() {
   const [isQuoteSidebarVisible, setIsQuoteSidebarVisible] = useState(true);
   const [allCustomers, setAllCustomers] = useState<Customer[]>([]);
   const [isLoadingCustomers, setIsLoadingCustomers] = useState<boolean>(true);
-  const [errorCustomers, setErrorCustomers] = useState<string | null>(null);
+  const [_errorCustomers, setErrorCustomers] = useState<string | null>(null);
   const [currentCustomer, setCurrentCustomer] = useState<Customer | null>(null);
   const [customerQuotes, setCustomerQuotes] = useState<Quote[]>([]);
   const [currentQuoteId, setCurrentQuoteId] = useState<string | null>(null);
@@ -627,7 +628,6 @@ export function PricebookPage() {
   const [isAddCustomerDialogOpen, setIsAddCustomerDialogOpen] = useState(false);
 
   const supabase = useSupabaseClient();
-  const [session, setSession] = useState<Session | null>(null);
 
   const [allServices, setAllServices] = useState<Service[]>(services);
   const [filteredServices, setFilteredServices] = useState<Service[]>([]);
@@ -1435,12 +1435,14 @@ export function PricebookPage() {
     // }
   }, [searchQuery]);
 
-  // Handler for sidebar hover
+  // Commented out as this function is never used
+  /*
   const handleSidebarHover = useCallback((hovering: boolean) => { 
     // Keeping sidebar expanded for now, hover doesn't change width
     // if (!sidebarOpen) setIsHovering(hovering);
     setIsHovering(hovering);
   }, [sidebarOpen]); // Dependency kept for potential future use
+  */
 
   // --- Category Selection Handler ---
   const handleCategorySelect = useCallback((categoryId: string) => {
@@ -2165,7 +2167,7 @@ export function PricebookPage() {
                         currentQuoteId={currentQuoteId}
                         customer={currentCustomer}
                         availableTiers={availableTiers}
-                        allCustomers={allCustomers} // Pass all customers for selection
+                        _allCustomers={allCustomers} // Pass all customers for selection
                         onQuoteSelect={handleQuoteSelect}
                         onTierSelect={handleTierSelect}
                         onDeleteTask={handleDeleteTask} // Pass down
@@ -2186,7 +2188,7 @@ export function PricebookPage() {
                         onDeleteAllQuotes={handleDeleteAllQuotes} // Pass down
                         onDuplicateQuote={handleDuplicateQuote} // Pass down
                         onDeleteAllTiers={handleDeleteAllTiers} // Pass down
-                        isLoadingCustomers={isLoadingCustomers} // Add this prop
+                        _isLoadingCustomers={isLoadingCustomers} // Add this prop
                       />
                       )}
               </main>

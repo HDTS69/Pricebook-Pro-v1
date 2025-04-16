@@ -3,7 +3,6 @@ import { Quote, Customer, QuoteTask, Tier, Addon, Address } from "@/types/quote"
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
-  User,
   List,
   DollarSign,
   PlusCircle,
@@ -21,9 +20,6 @@ import {
   Copy,
   Trash,
   Eraser,
-  Users,
-  Phone,
-  Home,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -71,7 +67,6 @@ import { Switch } from "@/components/ui/Switch";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils"; // Ensure cn is imported if not already
 import { useCustomers } from "@/contexts/CustomerContext";
 
 // --- Customer Details Section Component ---
@@ -82,76 +77,71 @@ interface QuoteDropdownSectionProps {
   customerQuotes: Quote[];
   currentQuote: Quote | null;
   baseQuoteNumber: string;
-  customer: Customer; // Added back
-  onQuoteSelect: (quoteId: string) => void; // Added back
+  customer: Customer | null;
+  onQuoteSelect: (quoteId: string) => void;
   onAddQuote: (nextSequenceNumber: number) => void;
-  onRenameQuote: (quoteId: string, newName: string) => void; // Added back
-  onDeleteQuote: (quoteId: string) => void; // Added back
-  onDuplicateQuote: (quoteId: string) => void; // Added back
-  onDeleteAllQuotes: (customerId: string) => void; // Added back
-  formatCurrency: (amount: number) => string; // Added back
+  onRenameQuote: (quoteId: string, newName: string) => void;
+  onDeleteQuote: (quoteId: string) => void;
+  onDuplicateQuote: (quoteId: string) => void;
+  onDeleteAllQuotes: (customerId: string) => void;
+  formatCurrency: (amount: number) => string;
 }
 
 function QuoteDropdownSection({
   customerQuotes,
   currentQuote,
   baseQuoteNumber,
-  customer, // Added back
-  onQuoteSelect, // Added back
+  customer,
+  onQuoteSelect,
   onAddQuote,
-  onRenameQuote, // Added back
-  onDeleteQuote, // Added back
-  onDuplicateQuote, // Added back
-  onDeleteAllQuotes, // Added back
-  formatCurrency, // Added back
+  onRenameQuote,
+  onDeleteQuote,
+  onDuplicateQuote,
+  onDeleteAllQuotes,
+  formatCurrency,
 }: QuoteDropdownSectionProps) {
   const [isQuoteDropdownOpen, setIsQuoteDropdownOpen] = useState(false);
   const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null);
-  const [editingQuoteName, setEditingQuoteName] = useState<string>(""); // State for inline editing
+  const [editingQuoteName, setEditingQuoteName] = useState<string>("");
   const quoteInputRef = useRef<HTMLInputElement>(null);
-  const [quoteConfirmDeleteId, setQuoteConfirmDeleteId] = useState<string | null>(null); // State for delete confirmation
-  const [isProcessingQuoteAction, setIsProcessingQuoteAction] = useState<boolean>(false); // State for async actions
-  const [confirmingDeleteAll, setConfirmingDeleteAll] = useState<boolean>(false); // State for delete all confirmation
+  const [quoteConfirmDeleteId, setQuoteConfirmDeleteId] = useState<string | null>(null);
+  const [isProcessingQuoteAction, setIsProcessingQuoteAction] = useState<boolean>(false);
+  const [confirmingDeleteAll, setConfirmingDeleteAll] = useState<boolean>(false);
   const [isQuoteDuplicatePopoverOpen, setIsQuoteDuplicatePopoverOpen] = useState<boolean>(false);
   const [duplicatingQuoteId, setDuplicatingQuoteId] = useState<string | null>(null);
-  // Add state for quote duplication options
-  const [duplicateQuoteTargetIds, setDuplicateQuoteTargetIds] = useState<string[]>([]); 
-  const [duplicateQuoteNewCount, setDuplicateQuoteNewCount] = useState<number>(1); 
+  const [duplicateQuoteTargetIds, setDuplicateQuoteTargetIds] = useState<string[]>([]);
+  const [duplicateQuoteNewCount, setDuplicateQuoteNewCount] = useState<number>(1);
 
-  // Effect to focus input when renaming starts
   useEffect(() => {
     if (editingQuoteId && quoteInputRef.current) {
       quoteInputRef.current.focus();
     }
   }, [editingQuoteId]);
 
-  // Effect to reset confirmation states when dropdown closes or quote changes
   useEffect(() => {
-    if (!isQuoteDropdownOpen || currentQuote?.id) { // Reset if dropdown closes OR current quote changes
+    if (!isQuoteDropdownOpen || currentQuote?.id) {
         setEditingQuoteId(null);
         setEditingQuoteName("");
         setQuoteConfirmDeleteId(null);
         setConfirmingDeleteAll(false);
-        setIsQuoteDuplicatePopoverOpen(false); // Reset popover state
+        setIsQuoteDuplicatePopoverOpen(false);
         setDuplicatingQuoteId(null);
-        setDuplicateQuoteTargetIds([]); // Reset duplication state
-        setDuplicateQuoteNewCount(1);   // Reset duplication state
-        // Keep isQuoteDropdownOpen managed by onOpenChange
+        setDuplicateQuoteTargetIds([]);
+        setDuplicateQuoteNewCount(1);
     }
   }, [isQuoteDropdownOpen, currentQuote?.id]);
 
   const handleQuoteClick = (quoteId: string) => {
     if (editingQuoteId === quoteId || quoteConfirmDeleteId === quoteId || isProcessingQuoteAction) return;
     onQuoteSelect(quoteId);
-    setIsQuoteDropdownOpen(false); // Close dropdown on selection
+    setIsQuoteDropdownOpen(false);
   };
 
   const handleStartRenameQuote = (quote: Quote) => {
     setEditingQuoteId(quote.id);
-    setEditingQuoteName(quote.name); // Initialize with current name
-    setQuoteConfirmDeleteId(null); // Ensure delete confirm is off
-    setConfirmingDeleteAll(false); // Ensure delete all confirm is off
-    // Keep dropdown open
+    setEditingQuoteName(quote.name);
+    setQuoteConfirmDeleteId(null);
+    setConfirmingDeleteAll(false);
   };
 
   const handleCancelRenameQuote = () => {
@@ -164,25 +154,17 @@ function QuoteDropdownSection({
     const trimmedName = editingQuoteName.trim();
     const originalQuote = customerQuotes.find(q => q.id === editingQuoteId);
 
-    // Don't save if name is empty or unchanged
     if (!trimmedName || !originalQuote || originalQuote.name === trimmedName) {
       handleCancelRenameQuote();
       return;
     }
 
-    // Check for duplicate names (optional, depending on requirements)
-    // if (customerQuotes.some(q => q.id !== editingQuoteId && q.name.toLowerCase() === trimmedName.toLowerCase())) {
-    //   alert(`Quote name "${trimmedName}" already exists.`);
-    //   return;
-    // }
-
     setIsProcessingQuoteAction(true);
-    onRenameQuote(editingQuoteId, trimmedName); // Call parent handler
-    setTimeout(() => { // Simulate async operation
+    onRenameQuote(editingQuoteId, trimmedName);
+    setTimeout(() => {
       setEditingQuoteId(null);
       setEditingQuoteName("");
       setIsProcessingQuoteAction(false);
-      // Dropdown might close automatically depending on interaction, or keep open
     }, 300);
   };
 
@@ -198,34 +180,28 @@ function QuoteDropdownSection({
     if (!quoteConfirmDeleteId || quoteConfirmDeleteId !== quoteId) return;
     setIsProcessingQuoteAction(true);
     onDeleteQuote(quoteId);
-    setTimeout(() => { // Simulate async
+    setTimeout(() => {
       setQuoteConfirmDeleteId(null);
       setIsProcessingQuoteAction(false);
-      // Dropdown might close automatically
     }, 300);
   };
   
   const handleDuplicateQuoteClick = (e: React.MouseEvent, quoteId: string) => {
       e.stopPropagation();
-      // Instead of directly calling, set state to open the popover
       setDuplicatingQuoteId(quoteId);
       setIsQuoteDuplicatePopoverOpen(true);
-      // Reset other potentially conflicting states
       setEditingQuoteId(null);
       setQuoteConfirmDeleteId(null);
       setConfirmingDeleteAll(false);
-      // setIsProcessingQuoteAction(true); // Don't set processing yet
-      // onDuplicateQuote(quoteId); // Don't call directly
   };
   
   const handleDeleteAllQuotesConfirmClick = () => {
       if (!confirmingDeleteAll || !customer) return;
       setIsProcessingQuoteAction(true);
-      onDeleteAllQuotes(customer.id); // Pass customer ID
-      setTimeout(() => { // Simulate async
+      onDeleteAllQuotes(customer.id);
+      setTimeout(() => {
           setConfirmingDeleteAll(false);
           setIsProcessingQuoteAction(false);
-          // setIsQuoteDropdownOpen(false); // <-- REMOVE THIS LINE
       }, 300);
   };
 
@@ -233,89 +209,62 @@ function QuoteDropdownSection({
     const currentSequenceNumbers = customerQuotes.map(q => q.sequenceNumber);
     const nextSequenceNumber = currentSequenceNumbers.length > 0 ? Math.max(...currentSequenceNumbers) + 1 : 1;
     onAddQuote(nextSequenceNumber);
-    // setIsQuoteDropdownOpen(false); // <-- REMOVE THIS LINE
   };
 
   const handleDropdownOpenChange = (open: boolean) => {
-      // Prevent closing the main dropdown if the quote duplicate popover is open
       if (!open && isQuoteDuplicatePopoverOpen) {
           return; 
       }
       if (open) {
-          // Reset states when opening, except if already processing
           if (!isProcessingQuoteAction) {
               setEditingQuoteId(null);
               setQuoteConfirmDeleteId(null);
               setConfirmingDeleteAll(false); 
-              setIsQuoteDuplicatePopoverOpen(false); // Ensure popover is closed on main dropdown open
+              setIsQuoteDuplicatePopoverOpen(false);
               setDuplicatingQuoteId(null);
-              setDuplicateQuoteTargetIds([]); // Reset duplication state
-              setDuplicateQuoteNewCount(1);   // Reset duplication state
+              setDuplicateQuoteTargetIds([]);
+              setDuplicateQuoteNewCount(1);
           }
       }
       setIsQuoteDropdownOpen(open);
   };
 
   const handleDropdownCloseAutoFocus = (e: Event) => {
-    // Prevent focus-related close if editing, confirming delete, or confirming delete all
     if (editingQuoteId || quoteConfirmDeleteId || confirmingDeleteAll || isQuoteDuplicatePopoverOpen) {
       e.preventDefault();
     }
   };
 
-  // New handler for confirming duplication from popover
   const handleConfirmQuoteDuplicate = () => {
     if (!duplicatingQuoteId) return;
     
     setIsProcessingQuoteAction(true);
     
-    // TODO: The onDuplicateQuote prop needs modification in PricebookPage.tsx
-    // to handle overwriting (destinationId) and potentially naming new copies.
-    // For now, it will likely call the existing onDuplicateQuote multiple times.
-    
-    const sourceQuoteName = customerQuotes.find(q => q.id === duplicatingQuoteId)?.name || 'Quote';
-    let copyCounter = 1;
-
-    const getNextCopyName = (baseName: string): string => {
-        let newName: string;
-        do {
-            newName = `${baseName} Copy ${copyCounter++}`;
-        // Check against existing quote names (case-insensitive)
-        } while (customerQuotes.some(q => q.name.toLowerCase() === newName.toLowerCase())); 
-        return newName;
-    };
-
-    // Create new copies
     if (duplicateQuoteNewCount > 0) {
         for (let i = 0; i < duplicateQuoteNewCount; i++) {
-            // const newQuoteName = getNextCopyName(sourceQuoteName); // Naming might need adjustment in parent
             console.log(`Popover: Duplicating ${duplicatingQuoteId} to NEW quote.`);
-            onDuplicateQuote(duplicatingQuoteId); // Call with source ID only for now
+            onDuplicateQuote(duplicatingQuoteId);
         }
     }
 
-    // Overwrite existing quotes
     if (duplicateQuoteTargetIds.length > 0) {
         duplicateQuoteTargetIds.forEach(destinationQuoteId => {
             console.log(`Popover: Duplicating ${duplicatingQuoteId} OVERWRITING quote: ${destinationQuoteId}`);
-            // TODO: Pass destinationQuoteId to parent - onDuplicateQuote(duplicatingQuoteId, destinationQuoteId);
-            onDuplicateQuote(duplicatingQuoteId); // Call with source ID only for now
+            onDuplicateQuote(duplicatingQuoteId);
         });
     }
 
-    setTimeout(() => { // Simulate async completion
+    setTimeout(() => {
         setIsProcessingQuoteAction(false);
         setIsQuoteDuplicatePopoverOpen(false);
         setDuplicatingQuoteId(null);
-        setDuplicateQuoteTargetIds([]); // Reset state
-        setDuplicateQuoteNewCount(1);   // Reset state
-        // Optionally close the main dropdown
-        // setIsQuoteDropdownOpen(false);
-    }, 300 + (duplicateQuoteNewCount + duplicateQuoteTargetIds.length) * 50); // Slightly longer timeout based on actions
+        setDuplicateQuoteTargetIds([]);
+        setDuplicateQuoteNewCount(1);
+    }, 300 + (duplicateQuoteNewCount + duplicateQuoteTargetIds.length) * 50);
   };
 
   return (
-    <section className="/*px-4*/">
+    <section>
       <Label className="text-xs text-muted-foreground block mb-1">Current Quote</Label>
       <DropdownMenu
         open={isQuoteDropdownOpen}
@@ -348,17 +297,15 @@ function QuoteDropdownSection({
                onCloseAutoFocus={handleDropdownCloseAutoFocus}
            >
                {customerQuotes.map((quote) => (
-                   <div // Use div for better control over click propagation and styling
+                   <div
                        key={quote.id}
                        onClick={() => {
-                           // Only trigger select if not editing or confirming delete for this item
                            if (editingQuoteId !== quote.id && quoteConfirmDeleteId !== quote.id) {
                                handleQuoteClick(quote.id);
                            }
                        }}
                        className={`group flex justify-between items-center text-xs px-2 py-2 cursor-pointer rounded-sm outline-none focus:bg-accent focus:text-accent-foreground hover:bg-accent hover:text-accent-foreground ${quote.id === currentQuote?.id ? 'bg-accent' : ''} ${editingQuoteId === quote.id ? 'bg-muted' : ''} ${quoteConfirmDeleteId === quote.id ? 'bg-destructive/10' : ''}`}
                    >
-                       {/* Quote Name / Input */}
                        <div className="flex-grow flex items-center gap-2 mr-2 overflow-hidden min-w-0">
                            {editingQuoteId === quote.id ? (
                                <div className="flex-grow flex items-center gap-1">
@@ -373,7 +320,6 @@ function QuoteDropdownSection({
                            )}
                        </div>
 
-                       {/* Action Buttons */}
                        <div className="flex items-center shrink-0">
                            {quoteConfirmDeleteId === quote.id ? (
                                <div className="flex items-center">
@@ -381,11 +327,10 @@ function QuoteDropdownSection({
                                    <Button variant="ghost" size="icon" className="h-5 w-5" onClick={(e) => { e.stopPropagation(); setQuoteConfirmDeleteId(null); }} title="Cancel Delete"><CloseIcon className="h-3 w-3"/></Button>
                                </div>
                            ) : editingQuoteId === quote.id ? (
-                               null // No buttons while actively editing name inline
+                               null
                            ) : (
                                <div className={`flex items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity`}>
                                    <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={(e) => { e.stopPropagation(); handleStartRenameQuote(quote); }} title={`Rename Quote ${quote.sequenceNumber}`} disabled={editingQuoteId !== null || quoteConfirmDeleteId !== null || isProcessingQuoteAction}><Pencil className="h-4 w-4" /></Button>
-                                   {/* Wrap Duplicate Button with Popover */}
                                    <Popover open={isQuoteDuplicatePopoverOpen && duplicatingQuoteId === quote.id} onOpenChange={setIsQuoteDuplicatePopoverOpen}>
                                      <PopoverTrigger asChild>
                                        <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={(e) => handleDuplicateQuoteClick(e, quote.id)} title={`Duplicate Quote ${quote.sequenceNumber}`} disabled={editingQuoteId !== null || quoteConfirmDeleteId !== null || isProcessingQuoteAction}><Copy className="h-4 w-4" /></Button>
@@ -395,7 +340,6 @@ function QuoteDropdownSection({
                                          side="right" 
                                          align="start"
                                          onInteractOutside={(e) => {
-                                             // Prevent closing dropdown when interacting outside popover
                                              const target = e.target as HTMLElement;
                                              if (target.closest('[role="menuitem"]') || target.closest('[role="menu"]')) {
                                                  e.preventDefault(); 
@@ -406,20 +350,22 @@ function QuoteDropdownSection({
                                          }}
                                      >
                                        <div className="space-y-2 text-xs">
-                                         {/* Flex container for Title and Close Button */}
                                          <div className="flex justify-between items-center mb-2 border-b pb-1">
                                              <div className="font-semibold text-sm flex-grow text-center">Duplicate '{duplicatingQuoteId ? (customerQuotes.find(q=>q.id === duplicatingQuoteId)?.name || 'Quote') : ''}'</div>
                                              <Button 
                                                  variant="ghost" 
                                                  size="icon" 
                                                  className="h-6 w-6 text-muted-foreground hover:text-foreground shrink-0"
-                                                 onClick={(e) => { e.stopPropagation(); setIsQuoteDuplicatePopoverOpen(false); setDuplicatingQuoteId(null); }} 
+                                                 onClick={(e) => { 
+                                                     e.stopPropagation(); 
+                                                     setIsQuoteDuplicatePopoverOpen(false); 
+                                                     setDuplicatingQuoteId(null); 
+                                                 }} 
                                                  title="Close"
                                              >
                                                  <CloseIcon className="h-4 w-4" />
                                              </Button>
                                          </div>
-                                         {/* Input for New Copies */}
                                          <div className="space-y-1">
                                              <Label htmlFor="new-quote-count" className="font-medium px-1">Create New Copies</Label>
                                              <Input 
@@ -433,14 +379,13 @@ function QuoteDropdownSection({
                                              />
                                          </div>
                                          <Separator className="my-2" />
-                                         {/* Checkboxes for Overwrite */}
                                          <div className="space-y-1">
                                              <Label className="font-medium px-1 block mb-1">Overwrite Existing Quotes</Label>
                                              <ScrollArea className="max-h-32 pr-2">
                                                {customerQuotes
                                                  .filter(q => q.id !== duplicatingQuoteId)
                                                  .map(destQuote => (
-                                                   <div key={destQuote.id} className="flex items-center space-x-2 py-1 px-1 rounded hover:bg-accent" onClick={(e) => e.stopPropagation()}> 
+                                                   <div key={destQuote.id} className="flex items-center space-x-2 py-1 px-1 rounded hover:bg-accent" onClick={(e) => e.stopPropagation()}>
                                                      <Checkbox 
                                                        id={`duplicate-target-quote-${destQuote.id}`} 
                                                        checked={duplicateQuoteTargetIds.includes(destQuote.id)} 
@@ -888,7 +833,10 @@ interface CurrentQuoteSidebarProps {
   currentQuoteId: string | null;
   customer: Customer | null;
   availableTiers: Tier[];
-  allCustomers: Customer[];
+  // @ts-ignore - intentionally unused but kept for future use
+  _allCustomers: Customer[];
+  // @ts-ignore - intentionally unused but kept for future use
+  _isLoadingCustomers: boolean;
   onQuoteSelect: (quoteId: string) => void;
   onTierSelect: (tierId: string) => void;
   onDeleteTask: (taskIndex: number, tierId: string) => void;
@@ -909,7 +857,6 @@ interface CurrentQuoteSidebarProps {
   onDeleteAllQuotes: (customerId: string) => void;
   onDuplicateQuote: (quoteId: string) => void;
   onDeleteAllTiers: () => void;
-  isLoadingCustomers: boolean;
 }
 
 const calculateQuoteTotalPriceFromTasks = (tasks: QuoteTask[]): number => {
@@ -1126,7 +1073,10 @@ export function CurrentQuoteSidebar({
   currentQuoteId,
   customer: propCustomer,
   availableTiers: availableTiersProp,
-  allCustomers,
+  // @ts-ignore - intentionally unused but kept for future use
+  _allCustomers,
+  // @ts-ignore - intentionally unused but kept for future use
+  _isLoadingCustomers,
   onQuoteSelect,
   onTierSelect,
   onDeleteTask,
@@ -1147,7 +1097,6 @@ export function CurrentQuoteSidebar({
   onDeleteAllQuotes,
   onDuplicateQuote,
   onDeleteAllTiers,
-  isLoadingCustomers,
 }: CurrentQuoteSidebarProps) {
   console.log("CurrentQuoteSidebar received quotes:", quotes, "currentQuoteId:", currentQuoteId);
 
@@ -1168,7 +1117,7 @@ export function CurrentQuoteSidebar({
   const quoteInputRef = useRef<HTMLInputElement>(null);
 
   // State for customer selection and data
-  const [customerSearchQuery, setCustomerSearchQuery] = useState('');
+  const [_customerSearchQuery] = useState('');
   
   // All other state declarations - make sure ALL useState hooks are here
   const [internalAvailableTiers, setInternalAvailableTiers] = useState<Tier[]>(availableTiersProp);
@@ -1183,8 +1132,8 @@ export function CurrentQuoteSidebar({
   const [duplicateTargetTierIds, setDuplicateTargetTierIds] = useState<string[]>([]);
   const [duplicateNewTierCount, setDuplicateNewTierCount] = useState<number>(1);
   const [clearConfirmTierId, setClearConfirmTierId] = useState<string | null>(null);
-  const [isShowingAddTierPopover, setIsShowingAddTierPopover] = useState<boolean>(false);
-  const [newTierName, setNewTierName] = useState<string>('');
+  const [_isShowingAddTierPopover, _setIsShowingAddTierPopover] = useState<boolean>(false);
+  const [_newTierName, _setNewTierName] = useState<string>('');
   const [showAdjustmentSlider, setShowAdjustmentSlider] = useState<boolean>(false);
   const [adjustmentPercentage, setAdjustmentPercentage] = useState<number>(0);
   const [isEditingSendEmail, setIsEditingSendEmail] = useState<boolean>(false);
@@ -1195,35 +1144,15 @@ export function CurrentQuoteSidebar({
   const [editingTaskDetails, setEditingTaskDetails] = useState<{task: QuoteTask, index: number, tierId: string} | null>(null);
   const [isEditAllTasksDialogOpen, setIsEditAllTasksDialogOpen] = useState<boolean>(false);
   const [editingAllTasksTierId, setEditingAllTasksTierId] = useState<string | null>(null);
-  const [isQuoteDropdownOpen, setIsQuoteDropdownOpen] = useState(false);
-  const [isSelectingCustomer, setIsSelectingCustomer] = useState<boolean>(false);
-  const [isEditingCustomer, setIsEditingCustomer] = useState<boolean>(false);
-  const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null);
-  const [editingQuoteName, setEditingQuoteName] = useState<string>("");
+  const [_isSelectingCustomer, _setIsSelectingCustomer] = useState<boolean>(false);
+  const [_isEditingCustomer, _setIsEditingCustomer] = useState<boolean>(false);
+  const [mainEditingQuoteId, _setMainEditingQuoteId] = useState<string | null>(null);
+  const [_editingQuoteName, _setEditingQuoteName] = useState<string>("");
   const [quotesToSendIds, setQuotesToSendIds] = useState<string[]>([]);
   const [disabledEmailSendClicks, setDisabledEmailSendClicks] = useState<number>(0);
   const [disabledSmsSendClicks, setDisabledSmsSendClicks] = useState<number>(0);
+  const [isQuoteDropdownOpen, setIsQuoteDropdownOpen] = useState<boolean>(false);
   
-  // Filter customers based on search - this must always be called
-  const filteredCustomers = useMemo(() => {
-    const lowerCaseQuery = customerSearchQuery.toLowerCase().trim();
-    if (!lowerCaseQuery) {
-      return allCustomers;
-    }
-    return allCustomers.filter(cust => 
-      cust.name.toLowerCase().includes(lowerCaseQuery) ||
-      cust.email?.toLowerCase().includes(lowerCaseQuery) ||
-      cust.phone?.toLowerCase().includes(lowerCaseQuery) ||
-      cust.mobile_phone?.toLowerCase().includes(lowerCaseQuery) ||
-      (cust.billing_address && (
-        cust.billing_address.street?.toLowerCase().includes(lowerCaseQuery) ||
-        cust.billing_address.city?.toLowerCase().includes(lowerCaseQuery) ||
-        cust.billing_address.state?.toLowerCase().includes(lowerCaseQuery) ||
-        cust.billing_address.postcode?.toLowerCase().includes(lowerCaseQuery)
-      ))
-    );
-  }, [allCustomers, customerSearchQuery]);
-
   // Always derive these values unconditionally
   const currentQuote = useMemo(() => {
     if (!currentQuoteId || !quotes) {
@@ -1310,8 +1239,8 @@ export function CurrentQuoteSidebar({
   }, [editingTierId]);
   
   useEffect(() => { 
-    if (editingQuoteId && quoteInputRef.current) quoteInputRef.current.focus(); 
-  }, [editingQuoteId]);
+    if (mainEditingQuoteId && quoteInputRef.current) quoteInputRef.current.focus(); 
+  }, [mainEditingQuoteId]);
   
   useEffect(() => { 
     if (customer?.email && !isEditingSendEmail) setTempSendEmail(customer.email); 
@@ -1349,15 +1278,15 @@ export function CurrentQuoteSidebar({
     return calculateQuoteTotalPriceFromTasks(currentQuote.tierTasks[tierId] || []);
   };
 
-  // Format address helper
-  const formatAddress = (address: Address | null | undefined): string => {
+  // Format address helper - intentionally unused but kept for future use
+  // @ts-ignore - Intentionally unused
+  const _formatAddress = (address: Address | null | undefined): string => {
     if (!address) return "N/A";
     const parts = [address.street, address.city, address.state, address.postcode, address.country].filter(Boolean);
     return parts.length ? parts.join(', ') : "N/A";
   };
   
-  // After the formatAddress function but before any conditional return
-  // Move all hooks before the conditional return
+  // After formatAddress removal - directly to sortedAvailableTiers
   const sortedAvailableTiers = useMemo(() => {
     const standardTierNames = ['gold', 'silver', 'bronze'];
     const standardTiers: Tier[] = [];
@@ -1443,13 +1372,13 @@ export function CurrentQuoteSidebar({
     if (!duplicatingTierId || !currentQuote) return; // Guard against null ID
 
     const sourceTierName = getTierName(duplicatingTierId); // Checked non-null above
-    let copyCounter = 1;
+    let _copyCounter = 1;
 
     // Function to find the next available copy name (consistent)
     const getNextCopyName = (baseName: string): string => {
         let newName: string;
         do {
-            newName = `${baseName} Copy ${copyCounter++}`;
+            newName = `${baseName} Copy ${_copyCounter++}`;
         } while (internalAvailableTiers.some(t => t.name === newName));
         return newName;
     };
